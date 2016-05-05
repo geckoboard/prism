@@ -17,18 +17,18 @@ var (
 	profileMutex sync.Mutex
 
 	// We maintain a set of active profiles grouped by goroutine id.
-	activeProfiles map[string]*profileEntry
+	activeProfiles map[string]*Entry
 
 	// A buffered channel for shiping profiles
-	shipChan chan *profileEntry
+	shipChan chan *Entry
 
 	// A channel for receiving start/term signals from shippers.
 	shipSigChan chan struct{}
 )
 
 func init() {
-	activeProfiles = make(map[string]*profileEntry, 0)
-	shipChan = make(chan *profileEntry, shipChanBufSize)
+	activeProfiles = make(map[string]*Entry, 0)
+	shipChan = make(chan *Entry, shipChanBufSize)
 	shipSigChan = make(chan struct{}, 0)
 
 	// run default shipper and wait for it to start
@@ -53,7 +53,7 @@ func BeginProfile(name string) {
 
 	tid := threadId()
 	s := makeEntry(name, 0)
-	s.threadId = tid
+	s.ThreadId = tid
 	activeProfiles[tid] = s
 }
 
@@ -86,7 +86,7 @@ func Enter(name string) {
 		panic(fmt.Sprintf("profiler: [BUG] entered scope %s (tid %s) without an active profile", name, tid))
 	}
 
-	var pe *profileEntry = nil
+	var pe *Entry = nil
 
 	// Scan nested scopes from end to start looking for an existing match
 	index := len(profile.Children) - 1
@@ -104,7 +104,7 @@ func Enter(name string) {
 	}
 
 	// Enter scope
-	pe.parent = profile
+	pe.Parent = profile
 	pe.EnteredAt = time.Now()
 	activeProfiles[tid] = pe
 }
@@ -120,14 +120,14 @@ func Leave() {
 		panic(fmt.Sprintf("profiler: [BUG] attempted to exit scope (tid %s) without an active profile", tid))
 	}
 
-	if pe.parent == nil {
+	if pe.Parent == nil {
 		panic(fmt.Sprintf("profiler: [BUG] attempted to exit an active profile (tid %s)", tid))
 	}
 
 	pe.updateStats()
 
 	// Pop parent
-	activeProfiles[tid] = pe.parent
+	activeProfiles[tid] = pe.Parent
 }
 
 // Detect the current go-routine id.

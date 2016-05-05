@@ -73,7 +73,7 @@ func jsonProfileShipper() {
 // Construct the path to a profile file for this entry. This function will
 // also pass the path through filepath.Clean to ensure that the proper slashes
 // are used depending on the host OS.
-func outputFile(pe *profileEntry, extension string) string {
+func outputFile(pe *Entry, extension string) string {
 	return filepath.Clean(
 		fmt.Sprintf(
 			"%s/%s%s-%d-%s.%s",
@@ -81,7 +81,7 @@ func outputFile(pe *profileEntry, extension string) string {
 			profilePrefix,
 			badCharRegex.ReplaceAllString(pe.Name, "_"),
 			pe.EnteredAt.UnixNano(),
-			pe.threadId,
+			pe.ThreadId,
 			extension,
 		),
 	)

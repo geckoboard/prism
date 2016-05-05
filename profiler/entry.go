@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-type profileEntry struct {
-	threadId string
+type Entry struct {
+	ThreadId string
 
 	Name  string `json:"name"`
 	Depth int    `json:"depth"`
@@ -22,17 +22,17 @@ type profileEntry struct {
 	TotalTime   time.Duration `json:"total_time"`
 	Invocations int           `json:"invocations"`
 
-	Children []*profileEntry `json:"children"`
-	parent   *profileEntry
+	Children []*Entry `json:"children"`
+	Parent   *Entry   `json:"-"`
 }
 
 // Allocate and initialize a new profile entry.
-func makeEntry(name string, depth int) *profileEntry {
-	return &profileEntry{
+func makeEntry(name string, depth int) *Entry {
+	return &Entry{
 		Name:  name,
 		Depth: depth,
 
-		Children: make([]*profileEntry, 0),
+		Children: make([]*Entry, 0),
 
 		EnteredAt: time.Now(),
 
@@ -42,7 +42,7 @@ func makeEntry(name string, depth int) *profileEntry {
 }
 
 // Update profile entry time stats.
-func (pe *profileEntry) updateStats() {
+func (pe *Entry) updateStats() {
 	elapsedTime := time.Since(pe.EnteredAt)
 	pe.Invocations++
 	if elapsedTime < pe.MinTime {
@@ -54,7 +54,7 @@ func (pe *profileEntry) updateStats() {
 	pe.TotalTime += elapsedTime
 }
 
-func (pe *profileEntry) String() string {
+func (pe *Entry) String() string {
 	buf := bytes.NewBufferString("")
 	if pe.Depth >= 0 {
 		if pe.Depth > 0 {
