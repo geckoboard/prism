@@ -1,6 +1,8 @@
 package inject
 
 import (
+	"bytes"
+	"go/ast"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -26,6 +28,30 @@ func ssaFnName(fn *ssa.Function) string {
 		normalized = normalized[0:pkgLen] + "/" + normalized[pkgLen+1:]
 	}
 	return normalized
+}
+
+func astFnName(fnDecl *ast.FuncDecl, pkgName string) string {
+	buf := bytes.NewBufferString(pkgName)
+	buf.WriteByte('/')
+
+	// Examine receiver
+	if fnDecl.Recv != nil {
+		for _, rcvField := range fnDecl.Recv.List {
+			// We only care for identifiers and star expressions
+			switch rcvType := rcvField.Type.(type) {
+			case *ast.StarExpr: // e.g (b *Bar)
+				buf.WriteString(rcvType.X.(*ast.Ident).Name)
+				buf.WriteByte('.')
+			case *ast.Ident:
+				buf.WriteString(rcvType.Name)
+				buf.WriteByte('.')
+			}
+		}
+	}
+
+	// Finally append fn name
+	buf.WriteString(fnDecl.Name.Name)
+	return buf.String()
 }
 
 // Construct fully qualified package name from file name
