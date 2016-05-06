@@ -19,7 +19,7 @@ import (
 func ProfileProject(ctx *cli.Context) {
 	args := ctx.Args()
 	if len(args) != 1 {
-		util.ExitWithError("error: missing path_to_main_file argument")
+		util.ExitWithError("error: missing path_to_project argument")
 	}
 
 	profileFuncs := ctx.StringSlice("target")
@@ -27,15 +27,19 @@ func ProfileProject(ctx *cli.Context) {
 		util.ExitWithError("error: no profile targets specified")
 	}
 
-	origPathToMain := args[0]
-	origProjectPath, err := filepath.Abs(filepath.Dir(origPathToMain))
+	runCmd := ctx.String("run-cmd")
+	if runCmd == "" {
+		util.ExitWithError("error: run-cmd not specified")
+	}
+
+	absProjPath, err := filepath.Abs(filepath.Dir(args[0]))
 	if err != nil {
 		util.ExitWithError(err.Error())
 	}
-	origProjectPath += "/"
+	absProjPath += "/"
 
 	// Clone project
-	tmpDir, tmpPathToMain, err := cloneProject(origPathToMain, ctx.String("output-folder"))
+	tmpDir, tmpAbsProjPath, err := cloneProject(absProjPath, ctx.String("output-folder"))
 	if err != nil {
 		util.ExitWithError(err.Error())
 	}
@@ -44,7 +48,7 @@ func ProfileProject(ctx *cli.Context) {
 	}
 
 	// Analyze project
-	analyzer, err := inject.NewAnalyzer(tmpPathToMain, origProjectPath)
+	analyzer, err := inject.NewAnalyzer(tmpAbsProjPath, absProjPath)
 	if err != nil {
 		defer util.ExitWithError(err.Error())
 		return
@@ -55,7 +59,7 @@ func ProfileProject(ctx *cli.Context) {
 	fmt.Printf("profile: call graph analyzed %d target(s) and detected %d locations for injecting profiler hooks\n", len(profileFuncs), len(profileTargets))
 
 	// Inject profiler
-	injector := inject.NewInjector(filepath.Dir(tmpPathToMain), origProjectPath)
+	injector := inject.NewInjector(tmpAbsProjPath, absProjPath)
 	touchedFiles, err := injector.Hook(profileTargets)
 	if err != nil {
 		defer util.ExitWithError(err.Error())
@@ -64,32 +68,27 @@ func ProfileProject(ctx *cli.Context) {
 
 	fmt.Printf("profile: updated %d files\n", touchedFiles)
 
-	// Build
-	err = buildProject(tmpDir, tmpPathToMain, ctx.String("build-cmd"))
-	if err != nil {
-		defer util.ExitWithError(err.Error())
-		return
+	// Handle build step if a build command is specified
+	buildCmd := ctx.String("build-cmd")
+	if buildCmd != "" {
+		err = buildProject(tmpDir, tmpAbsProjPath, buildCmd)
+		if err != nil {
+			defer util.ExitWithError(err.Error())
+			return
+		}
 	}
 
 	// Run
-	err = runProject(tmpPathToMain, ctx.String("run-cmd"))
+	err = runProject(tmpAbsProjPath, runCmd)
 	if err != nil {
 		defer util.ExitWithError(err.Error())
 		return
 	}
 }
 
-// Clone project and return updated path to main
-func cloneProject(pathToMain, dest string) (tmpDir, tmpPathToMain string, err error) {
-	mainFile := filepath.Base(pathToMain)
-
-	// Get absolute project path and trim everything before the first "src/"
-	// path segment which indicates the root of the GOPATH where the project resides in.
-	absProjectPath, err := filepath.Abs(filepath.Dir(pathToMain))
-	if err != nil {
-		return "", "", err
-	}
-	skipLen := strings.Index(absProjectPath, "/src/")
+// Clone project and return path to the cloned project.
+func cloneProject(absProjPath, dest string) (tmpDir, tmpAbsProjPath string, err error) {
+	skipLen := strings.Index(absProjPath, "/src/")
 
 	tmpDir, err = ioutil.TempDir(dest, "prism-")
 	if err != nil {
@@ -98,7 +97,7 @@ func cloneProject(pathToMain, dest string) (tmpDir, tmpPathToMain string, err er
 
 	fmt.Printf("profile: copying project to %s\n", tmpDir)
 
-	err = filepath.Walk(absProjectPath, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(absProjPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -133,12 +132,12 @@ func cloneProject(pathToMain, dest string) (tmpDir, tmpPathToMain string, err er
 	}
 
 	return tmpDir,
-		tmpDir + absProjectPath[skipLen:] + "/" + mainFile,
+		tmpDir + absProjPath[skipLen:],
 		nil
 }
 
 // Build patched project copy.
-func buildProject(tmpDir, tmpPathToMain, buildCmd string) error {
+func buildProject(tmpDir, tmpAbsProjPath, buildCmd string) error {
 	fmt.Printf("profile: building project (%s)\n", buildCmd)
 
 	// In order for go to correctly pick up any patched nested packages
@@ -170,7 +169,7 @@ func buildProject(tmpDir, tmpPathToMain, buildCmd string) error {
 	} else {
 		execCmd = exec.Command(tokens[0])
 	}
-	execCmd.Dir = filepath.Dir(tmpPathToMain)
+	execCmd.Dir = tmpAbsProjPath
 	execCmd.Env = env
 	execCmd.Stdout = stdout
 	execCmd.Stderr = stderr
@@ -188,7 +187,7 @@ func buildProject(tmpDir, tmpPathToMain, buildCmd string) error {
 }
 
 // Run patched project to collect profiler data.
-func runProject(tmpPathToMain, runCmd string) error {
+func runProject(tmpAbsProjPath, runCmd string) error {
 	fmt.Printf("profile: running patched project (%s)\n", runCmd)
 
 	// Setup buffered output writers
@@ -203,7 +202,7 @@ func runProject(tmpPathToMain, runCmd string) error {
 	} else {
 		execCmd = exec.Command(tokens[0])
 	}
-	execCmd.Dir = filepath.Dir(tmpPathToMain)
+	execCmd.Dir = tmpAbsProjPath
 	execCmd.Env = os.Environ()
 	execCmd.Stdout = stdout
 	execCmd.Stderr = stderr

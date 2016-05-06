@@ -17,7 +17,7 @@ func main() {
 			Name:        "profile",
 			Usage:       "clone go project and inject profiler",
 			Description: `Create a temp copy of a go project, attach profiler, build and run it.`,
-			ArgsUsage:   "path_to_main_file",
+			ArgsUsage:   "path_to_project",
 
 			Action: cmd.ProfileProject,
 			Flags: []cli.Flag{
@@ -28,12 +28,12 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "build-cmd",
-					Value: "go build -o profile-target",
+					Value: "",
 					Usage: "project build command",
 				},
 				cli.StringFlag{
 					Name:  "run-cmd",
-					Value: "profile-target",
+					Value: "go run main.go",
 					Usage: "project run command",
 				},
 				cli.StringFlag{

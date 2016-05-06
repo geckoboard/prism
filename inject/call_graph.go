@@ -2,6 +2,7 @@ package inject
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/callgraph/rta"
@@ -24,13 +25,12 @@ type Analyzer struct {
 	fnList           map[*ssa.Function]bool
 }
 
-// Create a new analyzer for a project given its main file. The pkgRootPathOverride
+// Create a new analyzer for a project. The projPathOverride
 // parameter can be used to override the base project path when parsing the
 // source code. Overriding the project path is useful when operating on a
-// temp copy of the original project files. If empty, the analyzer will
-// extract the dir portion of the mainFile and use that as the project path.
-func NewAnalyzer(mainFile, pkgRootPathOverride string) (*Analyzer, error) {
-	ssaProg, projectPkgPrefix, err := parseSSA(mainFile, pkgRootPathOverride)
+// temp copy of the original project files.
+func NewAnalyzer(absProjPath, projPathOverride string) (*Analyzer, error) {
+	ssaProg, projectPkgPrefix, err := parseSSA(absProjPath, projPathOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -108,19 +108,21 @@ func genTarget(fnName string, depth int) *Target {
 }
 
 // Parse main file and all its dependencies and convert into SSA representation.
-func parseSSA(mainFile, pkgRootPathOverride string) (*ssa.Program, string, error) {
-	if pkgRootPathOverride == "" {
-		pkgRootPathOverride = mainFile
+func parseSSA(absProjPath, projPathOverride string) (*ssa.Program, string, error) {
+	// Build fully qualified package name for project
+	projectPkgPrefix, err := qualifiedPkgName(projPathOverride)
+	if err != nil {
+		return nil, "", err
 	}
 
-	// Build fully qualified package name for main
-	projectPkgPrefix, err := qualifiedPkgName(pkgRootPathOverride)
+	// Fetch all go files that this package defines
+	goFiles, err := filepath.Glob(fmt.Sprintf("%s/*.go", projPathOverride))
 	if err != nil {
 		return nil, "", err
 	}
 
 	var conf loader.Config
-	conf.CreateFromFilenames(projectPkgPrefix, mainFile)
+	conf.CreateFromFilenames(projectPkgPrefix, goFiles...)
 	loadedProg, err := conf.Load()
 	if err != nil {
 		return nil, "", err
