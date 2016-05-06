@@ -26,7 +26,8 @@ var (
 	shipSigChan chan struct{}
 )
 
-func init() {
+// Initialize profiler. This method must be called before invoking any other method from this package.
+func Init() {
 	activeProfiles = make(map[string]*Entry, 0)
 	shipChan = make(chan *Entry, shipChanBufSize)
 	shipSigChan = make(chan struct{}, 0)

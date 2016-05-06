@@ -45,7 +45,7 @@ func (in *profilerInjector) Visit(node ast.Node) ast.Visitor {
 		// always executed last if main is also one of our hook targets.
 		if strings.HasSuffix(fqName, "/main") {
 			defer func() {
-				in.addShutdownHooks(fnDecl.Body)
+				in.hookMain(fnDecl.Body)
 				in.parsedFile.touched = true
 			}()
 		}
@@ -71,10 +71,17 @@ func (in *profilerInjector) Visit(node ast.Node) ast.Visitor {
 	return in
 }
 
-// Register profiler shutdown hook in main function declaration.
-func (in *profilerInjector) addShutdownHooks(mainBody *ast.BlockStmt) {
+// Register profiler init/shutdown hooks in main function declaration.
+func (in *profilerInjector) hookMain(mainBody *ast.BlockStmt) {
 	mainBody.List = append(
 		[]ast.Stmt{
+			&ast.ExprStmt{
+				&ast.BasicLit{
+					token.NoPos,
+					token.STRING,
+					`profiler.Init()`,
+				},
+			},
 			&ast.ExprStmt{
 				&ast.BasicLit{
 					token.NoPos,
