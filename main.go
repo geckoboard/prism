@@ -54,6 +54,13 @@ func main() {
 			ArgsUsage:   "profile",
 			Action:      cmd.PrintProfile,
 		},
+		{
+			Name:        "diff",
+			Usage:       "visually compare profiles",
+			Description: ``,
+			ArgsUsage:   "profile1 profile2 [...profile_n]",
+			Action:      cmd.DiffProfiles,
+		},
 	}
 
 	app.Run(os.Args)
