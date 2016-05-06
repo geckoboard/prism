@@ -47,6 +47,13 @@ func main() {
 				},
 			},
 		},
+		{
+			Name:        "print",
+			Usage:       "pretty-print profile",
+			Description: ``,
+			ArgsUsage:   "profile",
+			Action:      cmd.PrintProfile,
+		},
 	}
 
 	app.Run(os.Args)
