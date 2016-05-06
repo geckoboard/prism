@@ -15,28 +15,27 @@ func main() {
 	app.Commands = []cli.Command{
 		{
 			Name:        "profile",
-			Usage:       "inject profiler to go project",
-			Description: ``,
+			Usage:       "clone go project and inject profiler",
+			Description: `Create a temp copy of a go project, attach profiler, build and run it.`,
 			ArgsUsage:   "path_to_main_file",
-			Action:      cmd.ProfileProject,
+
+			Action: cmd.ProfileProject,
 			Flags: []cli.Flag{
 				cli.StringSliceFlag{
 					Name:  "target, t",
 					Value: &cli.StringSlice{},
 					Usage: "fully qualified function name to profile",
 				},
-				/*
-					cli.StringFlag{
-						Name:  "build-cmd",
-						Value: "go build",
-						Usage: "project build command",
-					},
-					cli.StringFlag{
-						Name:  "post-build-cmd",
-						Value: "",
-						Usage: "post build command",
-					},
-				*/
+				cli.StringFlag{
+					Name:  "build-cmd",
+					Value: "go build -o profile-target",
+					Usage: "project build command",
+				},
+				cli.StringFlag{
+					Name:  "run-cmd",
+					Value: "profile-target",
+					Usage: "project run command",
+				},
 				cli.StringFlag{
 					Name:  "output-folder, o",
 					Value: os.TempDir(),
