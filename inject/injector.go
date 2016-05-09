@@ -29,10 +29,6 @@ type Injector struct {
 }
 
 func NewInjector(pkgRootPath, pkgRootPathOverride string) *Injector {
-	if pkgRootPathOverride == "" {
-		pkgRootPathOverride = pkgRootPath
-	}
-
 	return &Injector{
 		parsedFiles:         make([]*parsedFile, 0),
 		pkgRootPath:         pkgRootPath,
@@ -85,7 +81,8 @@ func (in *Injector) buildAST(path string, info os.FileInfo, err error) error {
 		return err
 	}
 
-	if info.IsDir() {
+	// Skip dirs and non-go files
+	if info.IsDir() || !strings.HasSuffix(path, ".go") {
 		return nil
 	}
 

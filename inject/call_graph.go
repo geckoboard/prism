@@ -116,7 +116,7 @@ func parseSSA(absProjPath, projPathOverride string) (*ssa.Program, string, error
 	}
 
 	// Fetch all go files that this package defines
-	goFiles, err := filepath.Glob(fmt.Sprintf("%s/*.go", projPathOverride))
+	goFiles, err := filepath.Glob(fmt.Sprintf("%s*.go", projPathOverride))
 	if err != nil {
 		return nil, "", err
 	}

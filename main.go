@@ -33,7 +33,7 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "run-cmd",
-					Value: "go run main.go",
+					Value: `go run main.go`,
 					Usage: "project run command",
 				},
 				cli.StringFlag{

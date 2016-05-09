@@ -68,5 +68,8 @@ func qualifiedPkgName(file string) (string, error) {
 // Check if we can visit a particular function by comparing its fully qualified
 // name with the project's package prefix.
 func canVisit(fnName, projectPkgPrefix string) bool {
+	if strings.Contains(fnName, "Godeps") {
+		return false
+	}
 	return strings.HasPrefix(fnName, projectPkgPrefix)
 }

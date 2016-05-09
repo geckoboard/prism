@@ -6,9 +6,11 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/codegangsta/cli"
 	"github.com/geckoboard/prism/inject"
@@ -32,6 +34,9 @@ func ProfileProject(ctx *cli.Context) {
 		util.ExitWithError("error: run-cmd not specified")
 	}
 
+	if !strings.HasSuffix("/", args[0]) {
+		args[0] += "/"
+	}
 	absProjPath, err := filepath.Abs(filepath.Dir(args[0]))
 	if err != nil {
 		util.ExitWithError(err.Error())
@@ -79,7 +84,7 @@ func ProfileProject(ctx *cli.Context) {
 	}
 
 	// Run
-	err = runProject(tmpAbsProjPath, runCmd)
+	err = runProject(tmpDir, tmpAbsProjPath, runCmd)
 	if err != nil {
 		defer util.ExitWithError(err.Error())
 		return
@@ -136,10 +141,8 @@ func cloneProject(absProjPath, dest string) (tmpDir, tmpAbsProjPath string, err 
 		nil
 }
 
-// Build patched project copy.
-func buildProject(tmpDir, tmpAbsProjPath, buildCmd string) error {
-	fmt.Printf("profile: building project (%s)\n", buildCmd)
-
+// Copy envvars for current process and prepend tmpDir into GOPATH.
+func overrideGoPath(tmpDir string) []string {
 	// In order for go to correctly pick up any patched nested packages
 	// instead of the original ones we need to prepend the tmp dir to the
 	// build command's GOPATH envvar.
@@ -157,20 +160,28 @@ func buildProject(tmpDir, tmpAbsProjPath, buildCmd string) error {
 		}
 	}
 
+	return env
+}
+
+// Build patched project copy.
+func buildProject(tmpDir, tmpAbsProjPath, buildCmd string) error {
+	fmt.Printf("profile: building project (%s)\n", buildCmd)
+
 	// Setup buffered output writers
 	stdout := util.NewPaddedWriter(os.Stdout, "profile: [build] > ")
 	stderr := util.NewPaddedWriter(os.Stderr, "profile: [build] > ")
 
 	// Setup the build command and set up its cwd and env overrides
 	var execCmd *exec.Cmd
-	tokens := strings.Fields(buildCmd)
+	tokens := util.TokenizeArgs(buildCmd)
 	if len(tokens) > 1 {
 		execCmd = exec.Command(tokens[0], tokens[1:]...)
 	} else {
 		execCmd = exec.Command(tokens[0])
 	}
 	execCmd.Dir = tmpAbsProjPath
-	execCmd.Env = env
+	execCmd.Env = overrideGoPath(tmpDir)
+	execCmd.Stdin = os.Stdin
 	execCmd.Stdout = stdout
 	execCmd.Stderr = stderr
 	err := execCmd.Run()
@@ -187,7 +198,7 @@ func buildProject(tmpDir, tmpAbsProjPath, buildCmd string) error {
 }
 
 // Run patched project to collect profiler data.
-func runProject(tmpAbsProjPath, runCmd string) error {
+func runProject(tmpDir, tmpAbsProjPath, runCmd string) error {
 	fmt.Printf("profile: running patched project (%s)\n", runCmd)
 
 	// Setup buffered output writers
@@ -196,24 +207,39 @@ func runProject(tmpAbsProjPath, runCmd string) error {
 
 	// Setup the run command and set up its cwd and env overrides
 	var execCmd *exec.Cmd
-	tokens := strings.Fields(runCmd)
+	tokens := util.TokenizeArgs(runCmd)
 	if len(tokens) > 1 {
 		execCmd = exec.Command(tokens[0], tokens[1:]...)
 	} else {
 		execCmd = exec.Command(tokens[0])
 	}
 	execCmd.Dir = tmpAbsProjPath
-	execCmd.Env = os.Environ()
+	execCmd.Env = overrideGoPath(tmpDir)
+	execCmd.Stdin = os.Stdin
 	execCmd.Stdout = stdout
 	execCmd.Stderr = stderr
+	// start a signal handler and forward signals to process:
+	sigChan := make(chan os.Signal, 1)
+	defer close(sigChan)
+	signal.Notify(sigChan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	gotSignal := false
+	go func() {
+		s := <-sigChan
+		gotSignal = true
+		execCmd.Process.Signal(s)
+	}()
 	err := execCmd.Run()
 
 	// Flush writers
 	stdout.Flush()
 	stderr.Flush()
 
-	if err != nil {
+	if err != nil && !gotSignal {
 		return fmt.Errorf("profile: run failed: %s", err.Error())
+	}
+
+	if gotSignal {
+		fmt.Printf("profile: patched process execution interrupted by signal\n")
 	}
 
 	return nil

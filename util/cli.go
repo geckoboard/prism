@@ -8,9 +8,14 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/geckoboard/prism/profiler"
+)
+
+var (
+	tokenRegex = regexp.MustCompile("'.+'|\".+\"|\\S+")
 )
 
 // Output message to stderr and exit with status 1.
@@ -43,6 +48,12 @@ func LoadJsonProfile(file string) (*profiler.Entry, error) {
 	var pe *profiler.Entry
 	err = json.Unmarshal(data, &pe)
 	return pe, err
+}
+
+// Split args into tokens using whitespace as the delimiter. This function
+// behaves similar to strings.Fields but also preseves quoted sections.
+func TokenizeArgs(args string) []string {
+	return tokenRegex.FindAllString(args, -1)
 }
 
 // Padded writer wraps an io.Writer and inserts a customizable padding to the
