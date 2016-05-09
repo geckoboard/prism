@@ -84,7 +84,8 @@ func Enter(name string) {
 
 	profile, valid := activeProfiles[tid]
 	if !valid {
-		panic(fmt.Sprintf("profiler: [BUG] entered scope %s (tid %s) without an active profile", name, tid))
+		// Invoked through another call path that we do not monitor
+		return
 	}
 
 	var pe *Entry = nil
@@ -118,7 +119,8 @@ func Leave() {
 	tid := threadId()
 	pe, valid := activeProfiles[tid]
 	if !valid {
-		panic(fmt.Sprintf("profiler: [BUG] attempted to exit scope (tid %s) without an active profile", tid))
+		// Invoked through another call path that we do not monitor
+		return
 	}
 
 	if pe.Parent == nil {
