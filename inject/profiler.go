@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
-	"strings"
 
 	"golang.org/x/tools/go/ast/astutil"
 )
@@ -14,16 +13,21 @@ const (
 )
 
 type profilerInjector struct {
-	parsedFile *parsedFile
-	injector   *Injector
+	parsedFile   *parsedFile
+	injector     *Injector
+	mainFunction string
 }
 
 // Inject profiler hooks to any targets present in this parsed file. If any
 // hooks are applied, the injector will also add an import for the profiler package.
 func injectProfiler(parsedFile *parsedFile, injector *Injector) {
+	pkgBase, _ := qualifiedPkgName(injector.pkgRootPath)
+	fqMainFunction := pkgBase + "/main"
+
 	pi := &profilerInjector{
-		parsedFile: parsedFile,
-		injector:   injector,
+		parsedFile:   parsedFile,
+		injector:     injector,
+		mainFunction: fqMainFunction,
 	}
 
 	ast.Walk(pi, pi.parsedFile.astFile)
@@ -43,7 +47,7 @@ func (in *profilerInjector) Visit(node ast.Node) ast.Visitor {
 		// Since hooks are prepended to the statement body we need to
 		// use a defer block to ensure that the shutdown hooks are
 		// always executed last if main is also one of our hook targets.
-		if strings.HasSuffix(fqName, "/main") {
+		if fqName == in.mainFunction {
 			defer func() {
 				in.hookMain(fnDecl.Body)
 				in.parsedFile.touched = true

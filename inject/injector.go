@@ -87,7 +87,7 @@ func (in *Injector) buildAST(path string, info os.FileInfo, err error) error {
 	}
 
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, nil, 0)
+	f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
 		return fmt.Errorf("in: could not parse %s; %v", path, err)
 	}
