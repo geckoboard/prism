@@ -60,18 +60,28 @@ func TokenizeArgs(args string) []string {
 // beginning of every line. It buffers incoming data and flushes it whenever
 // a new line is encountered or the writer is manually flushed.
 type PaddedWriter struct {
-	w   io.Writer
-	buf *bytes.Buffer
-	pad []byte
+	w         io.Writer
+	buf       *bytes.Buffer
+	padPrefix []byte
+	padSuffix []byte
 }
 
 // Wrap a io.Writer with a writer that prepends pad to the beginning of each line.
-func NewPaddedWriter(w io.Writer, pad string) *PaddedWriter {
-	return &PaddedWriter{
-		w:   w,
-		buf: new(bytes.Buffer),
-		pad: []byte(pad),
+// An optional color argument containing an ANSI escape codemay be specified to
+// colorize output for color terminals.
+func NewPaddedWriter(w io.Writer, pad, color string) *PaddedWriter {
+	pw := &PaddedWriter{
+		w:         w,
+		buf:       new(bytes.Buffer),
+		padPrefix: []byte(pad),
 	}
+
+	if color != "" {
+		pw.padPrefix = append(pw.padPrefix, []byte(color)...)
+		pw.padSuffix = []byte("\033[0m")
+	}
+
+	return pw
 }
 
 // Implements io.Writer.
@@ -126,12 +136,15 @@ func (pw *PaddedWriter) Flush() {
 	}
 
 	// Write padding
-	_, err := pw.w.Write(pw.pad)
+	_, err := pw.w.Write(pw.padPrefix)
 	if err != nil {
 		return
 	}
 
-	// Write buffered data
+	// Write buffered data and suffix
 	pw.w.Write(pw.buf.Bytes())
+	if pw.padSuffix != nil {
+		pw.w.Write(pw.padSuffix)
+	}
 	pw.buf.Reset()
 }
