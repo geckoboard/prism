@@ -81,8 +81,8 @@ func (in *Injector) buildAST(path string, info os.FileInfo, err error) error {
 		return err
 	}
 
-	// Skip dirs and non-go files
-	if info.IsDir() || !strings.HasSuffix(path, ".go") {
+	// Skip dirs, non-go and go test files
+	if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 		return nil
 	}
 
