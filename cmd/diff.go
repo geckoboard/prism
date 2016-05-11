@@ -29,6 +29,11 @@ func DiffProfiles(ctx *cli.Context) {
 		util.ExitWithError("error: diff requires at least 2 profiles")
 	}
 
+	diffCols := util.ParseTableColumList(ctx.String("columns"))
+	if len(diffCols) == 0 {
+		util.ExitWithError("error: no diff table columns specified")
+	}
+
 	profiles := make([]*profiler.Entry, len(args))
 	for index, arg := range args {
 		profiles[index], err = util.LoadJsonProfile(arg)
@@ -39,7 +44,7 @@ func DiffProfiles(ctx *cli.Context) {
 
 	// Correlate profile nodes, build diff payload and tabularize it
 	correlMap := correlateEntries(profiles)
-	diffTable := tabularizeDiff(profiles, correlMap)
+	diffTable := tabularizeDiff(profiles, correlMap, diffCols)
 
 	// If stdout is not a terminal we need to strip ANSI characters
 	stripAnsiChars := !terminal.IsTerminal(int(os.Stdout.Fd()))
@@ -79,9 +84,9 @@ func populateEntryGroups(profileId int, pe *profiler.Entry, entryGroupsByName co
 
 // Generate a table with that summarizes all profiles and includes a speedup
 // factor for each profile compared to the first (baseline) profile.
-func tabularizeDiff(profiles []*profiler.Entry, entryGroupsByName correlatedEntriesMap) *util.Table {
+func tabularizeDiff(profiles []*profiler.Entry, entryGroupsByName correlatedEntriesMap, diffCols []util.TableColumnType) *util.Table {
 	t := &util.Table{
-		Headers:      make([]string, len(profiles)*5+1),
+		Headers:      make([]string, len(profiles)*len(diffCols)+1),
 		HeaderGroups: make([]util.TableHeaderGroup, len(profiles)+1),
 		Rows:         make([][]string, 0),
 		Padding:      1,
@@ -96,37 +101,30 @@ func tabularizeDiff(profiles []*profiler.Entry, entryGroupsByName correlatedEntr
 
 	startOffset := 1
 	for index, _ := range profiles {
-		baseIndex := startOffset + index*5
+		baseIndex := startOffset + index*len(diffCols)
 
 		if index == 0 {
 			t.HeaderGroups[startOffset+index].Header = "baseline"
 		} else {
 			t.HeaderGroups[startOffset+index].Header = fmt.Sprintf("profile %d", index)
 		}
-		t.HeaderGroups[startOffset+index].ColSpan = 5
+		t.HeaderGroups[startOffset+index].ColSpan = len(diffCols)
 
-		t.Alignment[baseIndex+0] = util.AlignRight
-		t.Alignment[baseIndex+1] = util.AlignRight
-		t.Alignment[baseIndex+2] = util.AlignRight
-		t.Alignment[baseIndex+3] = util.AlignRight
-		t.Alignment[baseIndex+4] = util.AlignRight
-
-		t.Headers[baseIndex+0] = "total (ms)"
-		t.Headers[baseIndex+1] = "avg (ms)"
-		t.Headers[baseIndex+2] = "min (ms)"
-		t.Headers[baseIndex+3] = "max (ms)"
-		t.Headers[baseIndex+4] = "invoc"
+		for dIndex, dType := range diffCols {
+			t.Alignment[baseIndex+dIndex] = util.AlignRight
+			t.Headers[baseIndex+dIndex] = dType.Header()
+		}
 	}
 
 	// Populate rows using first profile
-	populateDiffRows(profiles[0], len(profiles), entryGroupsByName, t)
+	populateDiffRows(profiles[0], len(profiles), entryGroupsByName, t, diffCols)
 
 	return t
 }
 
 // Populate table rows with profile entry metrics and comparison data.
-func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName correlatedEntriesMap, t *util.Table) {
-	row := make([]string, numProfiles*5+1)
+func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName correlatedEntriesMap, t *util.Table, diffCols []util.TableColumnType) {
+	row := make([]string, numProfiles*len(diffCols)+1)
 
 	// Fill in call
 	call := strings.Repeat("| ", pe.Depth)
@@ -146,7 +144,7 @@ func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName cor
 		minTime := float64(entry.MinTime.Nanoseconds()) / 1.0e6
 		maxTime := float64(entry.MaxTime.Nanoseconds()) / 1.0e6
 
-		baseIndex := profileId*5 + 1
+		baseIndex := profileId*len(diffCols) + 1
 		if baseLine != nil && profileId != 0 {
 
 			baseTotalTime := float64(baseLine.TotalTime.Nanoseconds()) / 1.0e6
@@ -154,17 +152,35 @@ func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName cor
 			baseMinTime := float64(baseLine.MinTime.Nanoseconds()) / 1.0e6
 			baseMaxTime := float64(baseLine.MaxTime.Nanoseconds()) / 1.0e6
 
-			row[baseIndex+0] = fmtDiff(baseTotalTime, totalTime)
-			row[baseIndex+1] = fmtDiff(baseAvgTime, avgTime)
-			row[baseIndex+2] = fmtDiff(baseMinTime, minTime)
-			row[baseIndex+3] = fmtDiff(baseMaxTime, maxTime)
-			row[baseIndex+4] = fmt.Sprintf("%d", entry.Invocations)
+			for dIndex, dType := range diffCols {
+				switch dType {
+				case util.TableColTotal:
+					row[baseIndex+dIndex] = fmtDiff(baseTotalTime, totalTime)
+				case util.TableColAvg:
+					row[baseIndex+dIndex] = fmtDiff(baseAvgTime, avgTime)
+				case util.TableColMin:
+					row[baseIndex+dIndex] = fmtDiff(baseMinTime, minTime)
+				case util.TableColMax:
+					row[baseIndex+dIndex] = fmtDiff(baseMaxTime, maxTime)
+				case util.TableColInvocations:
+					row[baseIndex+dIndex] = fmt.Sprintf("%d", entry.Invocations)
+				}
+			}
 		} else {
-			row[baseIndex+0] = fmt.Sprintf("%1.2f (---)", totalTime)
-			row[baseIndex+1] = fmt.Sprintf("%1.2f (---)", avgTime)
-			row[baseIndex+2] = fmt.Sprintf("%1.2f (---)", minTime)
-			row[baseIndex+3] = fmt.Sprintf("%1.2f (---)", maxTime)
-			row[baseIndex+4] = fmt.Sprintf("%d", entry.Invocations)
+			for dIndex, dType := range diffCols {
+				switch dType {
+				case util.TableColTotal:
+					row[baseIndex+dIndex] = fmt.Sprintf("%1.2f (---)", totalTime)
+				case util.TableColAvg:
+					row[baseIndex+dIndex] = fmt.Sprintf("%1.2f (---)", avgTime)
+				case util.TableColMin:
+					row[baseIndex+dIndex] = fmt.Sprintf("%1.2f (---)", minTime)
+				case util.TableColMax:
+					row[baseIndex+dIndex] = fmt.Sprintf("%1.2f (---)", maxTime)
+				case util.TableColInvocations:
+					row[baseIndex+dIndex] = fmt.Sprintf("%d", entry.Invocations)
+				}
+			}
 		}
 	}
 
@@ -173,7 +189,7 @@ func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName cor
 
 	//  Process children
 	for _, child := range pe.Children {
-		populateDiffRows(child, numProfiles, entryGroupsByName, t)
+		populateDiffRows(child, numProfiles, entryGroupsByName, t, diffCols)
 	}
 }
 

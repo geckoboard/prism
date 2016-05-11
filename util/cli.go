@@ -15,7 +15,8 @@ import (
 )
 
 var (
-	tokenRegex = regexp.MustCompile("'.+'|\".+\"|\\S+")
+	tokenRegex         = regexp.MustCompile("'.+'|\".+\"|\\S+")
+	tableColSplitRegex = regexp.MustCompile(`\s*?,\s*?`)
 )
 
 // Output message to stderr and exit with status 1.
@@ -147,4 +148,58 @@ func (pw *PaddedWriter) Flush() {
 		pw.w.Write(pw.padSuffix)
 	}
 	pw.buf.Reset()
+}
+
+// A typed value to indicate which table columns should be included in the output.
+type TableColumnType int
+
+const (
+	TableColTotal TableColumnType = iota
+	TableColAvg
+	TableColMin
+	TableColMax
+	TableColInvocations
+)
+
+// Return the table header value for this column type.
+func (dc TableColumnType) Header() string {
+	switch dc {
+	case TableColTotal:
+		return "total (ms)"
+	case TableColAvg:
+		return "avg (ms)"
+	case TableColMin:
+		return "min (ms)"
+	case TableColMax:
+		return "max (ms)"
+	case TableColInvocations:
+		return "invoc"
+	}
+
+	panic("unsupported column type")
+}
+
+// Parse a comma delimited set of column types.
+func ParseTableColumList(list string) []TableColumnType {
+	cols := make([]TableColumnType, 0)
+	for _, colName := range tableColSplitRegex.Split(list, -1) {
+		var col TableColumnType
+		switch colName {
+		case "total":
+			col = TableColTotal
+		case "avg":
+			col = TableColAvg
+		case "min":
+			col = TableColMin
+		case "max":
+			col = TableColMax
+		case "invocations":
+			col = TableColInvocations
+		default:
+			ExitWithError("error: unsupported column name '%s'; supported column names are: total, avg, min, max, invocations", colName)
+		}
+		cols = append(cols, col)
+	}
+
+	return cols
 }
