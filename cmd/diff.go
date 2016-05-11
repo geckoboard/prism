@@ -34,6 +34,8 @@ func DiffProfiles(ctx *cli.Context) {
 		util.ExitWithError("error: no diff table columns specified")
 	}
 
+	threshold := ctx.Float64("threshold")
+
 	profiles := make([]*profiler.Entry, len(args))
 	for index, arg := range args {
 		profiles[index], err = util.LoadJsonProfile(arg)
@@ -44,7 +46,7 @@ func DiffProfiles(ctx *cli.Context) {
 
 	// Correlate profile nodes, build diff payload and tabularize it
 	correlMap := correlateEntries(profiles)
-	diffTable := tabularizeDiff(profiles, correlMap, diffCols)
+	diffTable := tabularizeDiff(profiles, correlMap, diffCols, threshold)
 
 	// If stdout is not a terminal we need to strip ANSI characters
 	stripAnsiChars := !terminal.IsTerminal(int(os.Stdout.Fd()))
@@ -84,7 +86,7 @@ func populateEntryGroups(profileId int, pe *profiler.Entry, entryGroupsByName co
 
 // Generate a table with that summarizes all profiles and includes a speedup
 // factor for each profile compared to the first (baseline) profile.
-func tabularizeDiff(profiles []*profiler.Entry, entryGroupsByName correlatedEntriesMap, diffCols []util.TableColumnType) *util.Table {
+func tabularizeDiff(profiles []*profiler.Entry, entryGroupsByName correlatedEntriesMap, diffCols []util.TableColumnType, threshold float64) *util.Table {
 	t := &util.Table{
 		Headers:      make([]string, len(profiles)*len(diffCols)+1),
 		HeaderGroups: make([]util.TableHeaderGroup, len(profiles)+1),
@@ -117,13 +119,13 @@ func tabularizeDiff(profiles []*profiler.Entry, entryGroupsByName correlatedEntr
 	}
 
 	// Populate rows using first profile
-	populateDiffRows(profiles[0], len(profiles), entryGroupsByName, t, diffCols)
+	populateDiffRows(profiles[0], len(profiles), entryGroupsByName, t, diffCols, threshold)
 
 	return t
 }
 
 // Populate table rows with profile entry metrics and comparison data.
-func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName correlatedEntriesMap, t *util.Table, diffCols []util.TableColumnType) {
+func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName correlatedEntriesMap, t *util.Table, diffCols []util.TableColumnType, threshold float64) {
 	row := make([]string, numProfiles*len(diffCols)+1)
 
 	// Fill in call
@@ -155,15 +157,15 @@ func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName cor
 			for dIndex, dType := range diffCols {
 				switch dType {
 				case util.TableColTotal:
-					row[baseIndex+dIndex] = fmtDiff(baseTotalTime, totalTime)
+					row[baseIndex+dIndex] = fmtDiff(baseTotalTime, totalTime, threshold)
 				case util.TableColAvg:
-					row[baseIndex+dIndex] = fmtDiff(baseAvgTime, avgTime)
+					row[baseIndex+dIndex] = fmtDiff(baseAvgTime, avgTime, threshold)
 				case util.TableColMin:
-					row[baseIndex+dIndex] = fmtDiff(baseMinTime, minTime)
+					row[baseIndex+dIndex] = fmtDiff(baseMinTime, minTime, threshold)
 				case util.TableColMax:
-					row[baseIndex+dIndex] = fmtDiff(baseMaxTime, maxTime)
+					row[baseIndex+dIndex] = fmtDiff(baseMaxTime, maxTime, threshold)
 				case util.TableColInvocations:
-					row[baseIndex+dIndex] = fmt.Sprintf("%d", entry.Invocations)
+					row[baseIndex+dIndex] = fmt.Sprintf("%d", entry.Invocations, threshold)
 				}
 			}
 		} else {
@@ -189,19 +191,25 @@ func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName cor
 
 	//  Process children
 	for _, child := range pe.Children {
-		populateDiffRows(child, numProfiles, entryGroupsByName, t, diffCols)
+		populateDiffRows(child, numProfiles, entryGroupsByName, t, diffCols, threshold)
 	}
 }
 
 // Colorize and format candidate including a comparison to the baseline value.
-// This method treats lower values as better.
-func fmtDiff(baseLine, candidate float64) string {
+// This method treats lower values as better. If the abs delta difference
+// of the two values is less than the threshold then no comparison will be performed.
+func fmtDiff(baseLine, candidate float64, threshold float64) string {
+	absDelta := math.Abs(baseLine - candidate)
+	if absDelta < threshold {
+		return fmt.Sprintf("%1.2f (--)", candidate)
+	}
+
 	var speedup float64 = 0.0
 	if candidate != 0 {
 		speedup = baseLine / candidate
 	}
 
-	if math.Abs(baseLine-candidate) < diffEpsilon {
+	if absDelta < diffEpsilon {
 		speedup = 1.0
 	}
 

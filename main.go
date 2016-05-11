@@ -73,6 +73,11 @@ func main() {
 					Value: "total,avg,min,max,invocations",
 					Usage: "columns to include in diff table",
 				},
+				cli.IntFlag{
+					Name:  "threshold",
+					Value: 0,
+					Usage: "only compare entries whose time difference exceeds the threshold",
+				},
 			},
 		},
 	}
