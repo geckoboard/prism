@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -10,6 +11,10 @@ import (
 	"github.com/codegangsta/cli"
 	"github.com/geckoboard/prism/profiler"
 	"github.com/geckoboard/prism/util"
+)
+
+const (
+	diffEpsilon = 0.01
 )
 
 type idToEntryMap map[int]*profiler.Entry
@@ -180,8 +185,12 @@ func fmtDiff(baseLine, candidate float64) string {
 		speedup = baseLine / candidate
 	}
 
+	if math.Abs(baseLine-candidate) < diffEpsilon {
+		speedup = 1.0
+	}
+
 	var color string
-	if speedup == 0.0 {
+	if speedup == 0.0 || speedup == 1.0 {
 		color = "\033[33m" // yellow
 	} else if speedup >= 1.0 {
 		color = "\033[32m" // green
