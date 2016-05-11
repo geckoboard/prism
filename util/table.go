@@ -160,8 +160,8 @@ func (t *Table) groupWidths(colWidths []int) []int {
 		}
 
 		// Include separators and padding for inner columns to width
-		if group.ColSpan > 2 {
-			groupWidth += (group.ColSpan - 2) * (2 + 2*t.Padding)
+		if group.ColSpan > 1 {
+			groupWidth += (group.ColSpan - 1) * (1 + 2*t.Padding)
 		}
 
 		groupWidths[groupIndex] = groupWidth
