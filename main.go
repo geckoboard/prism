@@ -53,6 +53,13 @@ func main() {
 			Description: ``,
 			ArgsUsage:   "profile",
 			Action:      cmd.PrintProfile,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "columns",
+					Value: "total,avg,min,max,invocations",
+					Usage: "columns to include in the printout",
+				},
+			},
 		},
 		{
 			Name:        "diff",

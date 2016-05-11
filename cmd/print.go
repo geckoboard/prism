@@ -20,12 +20,17 @@ func PrintProfile(ctx *cli.Context) {
 		util.ExitWithError("error: print requires a profile argument")
 	}
 
+	tableCols := util.ParseTableColumList(ctx.String("columns"))
+	if len(tableCols) == 0 {
+		util.ExitWithError("error: no table columns specified")
+	}
+
 	profile, err := util.LoadJsonProfile(args[0])
 	if err != nil {
 		util.ExitWithError(err.Error())
 	}
 
-	profTable := tabularizeProfile(profile)
+	profTable := tabularizeProfile(profile, tableCols)
 
 	// If stdout is not a terminal we need to strip ANSI characters
 	stripAnsiChars := !terminal.IsTerminal(int(os.Stdout.Fd()))
@@ -33,39 +38,31 @@ func PrintProfile(ctx *cli.Context) {
 }
 
 // Create a table with profile details.
-func tabularizeProfile(profile *profiler.Entry) *util.Table {
+func tabularizeProfile(profile *profiler.Entry, tableCols []util.TableColumnType) *util.Table {
 	t := &util.Table{
-		Headers: make([]string, 6),
-		Rows:    make([][]string, 0),
-		Padding: 1,
+		Headers:   make([]string, len(tableCols)+1),
+		Alignment: make([]util.Alignment, len(tableCols)+1),
+		Rows:      make([][]string, 0),
+		Padding:   1,
 	}
 
-	// Setup alignment
-	t.Alignment = make([]util.Alignment, len(t.Headers))
+	// Setup headers and alignment settings
 	t.Alignment[0] = util.AlignLeft
-	t.Alignment[1] = util.AlignRight
-	t.Alignment[2] = util.AlignRight
-	t.Alignment[3] = util.AlignRight
-	t.Alignment[4] = util.AlignRight
-	t.Alignment[5] = util.AlignRight
-
-	// Setup headers
 	t.Headers[0] = "call stack"
-	t.Headers[1] = "total (ms)"
-	t.Headers[2] = "avg (ms)"
-	t.Headers[3] = "min (ms)"
-	t.Headers[4] = "max (ms)"
-	t.Headers[5] = "invoc"
+	for dIndex, dType := range tableCols {
+		t.Alignment[dIndex+1] = util.AlignRight
+		t.Headers[dIndex+1] = dType.Header()
+	}
 
 	// Populate rows
-	populateProfileRows(profile, t)
+	populateProfileRows(profile, t, tableCols)
 
 	return t
 }
 
 // Populate table rows with profile entry metrics.
-func populateProfileRows(pe *profiler.Entry, t *util.Table) {
-	row := make([]string, 6)
+func populateProfileRows(pe *profiler.Entry, t *util.Table, tableCols []util.TableColumnType) {
+	row := make([]string, len(tableCols)+1)
 
 	// Fill in call
 	call := strings.Repeat("| ", pe.Depth)
@@ -82,17 +79,27 @@ func populateProfileRows(pe *profiler.Entry, t *util.Table) {
 	minTime := float64(pe.MinTime.Nanoseconds()) / 1.0e6
 	maxTime := float64(pe.MaxTime.Nanoseconds()) / 1.0e6
 
-	row[1] = fmt.Sprintf("%1.2f", totalTime)
-	row[2] = fmt.Sprintf("%1.2f", avgTime)
-	row[3] = fmt.Sprintf("%1.2f", minTime)
-	row[4] = fmt.Sprintf("%1.2f", maxTime)
-	row[5] = fmt.Sprintf("%d", pe.Invocations)
+	baseIndex := 1
+	for dIndex, dType := range tableCols {
+		switch dType {
+		case util.TableColTotal:
+			row[baseIndex+dIndex] = fmt.Sprintf("%1.2f", totalTime)
+		case util.TableColAvg:
+			row[baseIndex+dIndex] = fmt.Sprintf("%1.2f", avgTime)
+		case util.TableColMin:
+			row[baseIndex+dIndex] = fmt.Sprintf("%1.2f", minTime)
+		case util.TableColMax:
+			row[baseIndex+dIndex] = fmt.Sprintf("%1.2f", maxTime)
+		case util.TableColInvocations:
+			row[baseIndex+dIndex] = fmt.Sprintf("%d", pe.Invocations)
+		}
+	}
 
 	// Append row to table
 	t.Rows = append(t.Rows, row)
 
 	//  Process children
 	for _, child := range pe.Children {
-		populateProfileRows(child, t)
+		populateProfileRows(child, t, tableCols)
 	}
 }
