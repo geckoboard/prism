@@ -59,6 +59,11 @@ func main() {
 					Value: "total,avg,min,max,invocations",
 					Usage: "columns to include in the printout",
 				},
+				cli.Float64Flag{
+					Name:  "threshold",
+					Value: 0.0,
+					Usage: "only show measurements for entries whose time exceeds the threshold",
+				},
 			},
 		},
 		{
@@ -73,9 +78,9 @@ func main() {
 					Value: "total,avg,min,max,invocations",
 					Usage: "columns to include in diff table",
 				},
-				cli.IntFlag{
+				cli.Float64Flag{
 					Name:  "threshold",
-					Value: 0,
+					Value: 0.0,
 					Usage: "only compare entries whose time difference exceeds the threshold",
 				},
 			},

@@ -25,12 +25,14 @@ func PrintProfile(ctx *cli.Context) {
 		util.ExitWithError("error: no table columns specified")
 	}
 
+	threshold := ctx.Float64("threshold")
+
 	profile, err := util.LoadJsonProfile(args[0])
 	if err != nil {
 		util.ExitWithError(err.Error())
 	}
 
-	profTable := tabularizeProfile(profile, tableCols)
+	profTable := tabularizeProfile(profile, tableCols, threshold)
 
 	// If stdout is not a terminal we need to strip ANSI characters
 	stripAnsiChars := !terminal.IsTerminal(int(os.Stdout.Fd()))
@@ -38,7 +40,7 @@ func PrintProfile(ctx *cli.Context) {
 }
 
 // Create a table with profile details.
-func tabularizeProfile(profile *profiler.Entry, tableCols []util.TableColumnType) *util.Table {
+func tabularizeProfile(profile *profiler.Entry, tableCols []util.TableColumnType, threshold float64) *util.Table {
 	t := &util.Table{
 		Headers:   make([]string, len(tableCols)+1),
 		Alignment: make([]util.Alignment, len(tableCols)+1),
@@ -55,13 +57,13 @@ func tabularizeProfile(profile *profiler.Entry, tableCols []util.TableColumnType
 	}
 
 	// Populate rows
-	populateProfileRows(profile, t, tableCols)
+	populateProfileRows(profile, t, tableCols, threshold)
 
 	return t
 }
 
 // Populate table rows with profile entry metrics.
-func populateProfileRows(pe *profiler.Entry, t *util.Table, tableCols []util.TableColumnType) {
+func populateProfileRows(pe *profiler.Entry, t *util.Table, tableCols []util.TableColumnType, threshold float64) {
 	row := make([]string, len(tableCols)+1)
 
 	// Fill in call
@@ -83,13 +85,13 @@ func populateProfileRows(pe *profiler.Entry, t *util.Table, tableCols []util.Tab
 	for dIndex, dType := range tableCols {
 		switch dType {
 		case util.TableColTotal:
-			row[baseIndex+dIndex] = fmt.Sprintf("%1.2f", totalTime)
+			row[baseIndex+dIndex] = fmtEntry(totalTime, threshold)
 		case util.TableColAvg:
-			row[baseIndex+dIndex] = fmt.Sprintf("%1.2f", avgTime)
+			row[baseIndex+dIndex] = fmtEntry(avgTime, threshold)
 		case util.TableColMin:
-			row[baseIndex+dIndex] = fmt.Sprintf("%1.2f", minTime)
+			row[baseIndex+dIndex] = fmtEntry(minTime, threshold)
 		case util.TableColMax:
-			row[baseIndex+dIndex] = fmt.Sprintf("%1.2f", maxTime)
+			row[baseIndex+dIndex] = fmtEntry(maxTime, threshold)
 		case util.TableColInvocations:
 			row[baseIndex+dIndex] = fmt.Sprintf("%d", pe.Invocations)
 		}
@@ -100,6 +102,15 @@ func populateProfileRows(pe *profiler.Entry, t *util.Table, tableCols []util.Tab
 
 	//  Process children
 	for _, child := range pe.Children {
-		populateProfileRows(child, t, tableCols)
+		populateProfileRows(child, t, tableCols, threshold)
 	}
+}
+
+// Format profile entry
+func fmtEntry(candidate float64, threshold float64) string {
+	if candidate < threshold {
+		return ""
+	}
+
+	return fmt.Sprintf("%1.2f", candidate)
 }
