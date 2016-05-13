@@ -165,7 +165,7 @@ func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName cor
 				case util.TableColMax:
 					row[baseIndex+dIndex] = fmtDiff(baseMaxTime, maxTime, threshold)
 				case util.TableColInvocations:
-					row[baseIndex+dIndex] = fmt.Sprintf("%d", entry.Invocations, threshold)
+					row[baseIndex+dIndex] = fmt.Sprintf("%d", entry.Invocations)
 				}
 			}
 		} else {
