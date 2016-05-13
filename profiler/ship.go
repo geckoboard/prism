@@ -76,7 +76,7 @@ func jsonProfileShipper() {
 func outputFile(pe *Entry, extension string) string {
 	return filepath.Clean(
 		fmt.Sprintf(
-			"%s/%s%s-%d-%s.%s",
+			"%s/%s%s-%d-%d.%s",
 			profileOutputDir,
 			profilePrefix,
 			badCharRegex.ReplaceAllString(pe.Name, "_"),

@@ -2,8 +2,6 @@ package profiler
 
 import (
 	"fmt"
-	"runtime"
-	"strings"
 	"sync"
 	"time"
 )
@@ -17,7 +15,7 @@ var (
 	profileMutex sync.Mutex
 
 	// We maintain a set of active profiles grouped by goroutine id.
-	activeProfiles map[string]*Entry
+	activeProfiles map[uint64]*Entry
 
 	// A buffered channel for shiping profiles
 	shipChan chan *Entry
@@ -28,7 +26,7 @@ var (
 
 // Initialize profiler. This method must be called before invoking any other method from this package.
 func Init() {
-	activeProfiles = make(map[string]*Entry, 0)
+	activeProfiles = make(map[uint64]*Entry, 0)
 	shipChan = make(chan *Entry, shipChanBufSize)
 	shipSigChan = make(chan struct{}, 0)
 
@@ -131,11 +129,4 @@ func Leave() {
 
 	// Pop parent
 	activeProfiles[tid] = pe.Parent
-}
-
-// Detect the current go-routine id.
-func threadId() string {
-	var buf [64]byte
-	n := runtime.Stack(buf[:], false)
-	return strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
 }

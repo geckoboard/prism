@@ -1,15 +1,12 @@
 package profiler
 
 import (
-	"bytes"
-	"fmt"
 	"math"
-	"strings"
 	"time"
 )
 
 type Entry struct {
-	ThreadId string
+	ThreadId uint64
 
 	Name  string `json:"name"`
 	Depth int    `json:"depth"`
@@ -52,45 +49,4 @@ func (pe *Entry) updateStats() {
 		pe.MaxTime = elapsedTime
 	}
 	pe.TotalTime += elapsedTime
-}
-
-func (pe *Entry) String() string {
-	buf := bytes.NewBufferString("")
-	if pe.Depth >= 0 {
-		if pe.Depth > 0 {
-			buf.WriteString(strings.Repeat("| ", pe.Depth))
-			if len(pe.Children) == 0 {
-				buf.WriteString("- ")
-			} else {
-				buf.WriteString("+ ")
-			}
-		}
-
-		if pe.Invocations > 1 {
-			buf.WriteString(
-				fmt.Sprintf("%s [min %1.2f ms, avg %1.2f ms, max %1.2f ms, total %1.2f ms] [invocations: %d]\n",
-					pe.Name,
-					float64(pe.MinTime.Nanoseconds())/1.0e6,
-					float64(pe.TotalTime.Nanoseconds())/float64(pe.Invocations*1e6),
-					float64(pe.MaxTime.Nanoseconds())/1.0e6,
-					float64(pe.TotalTime.Nanoseconds())/1.0e6,
-					pe.Invocations,
-				),
-			)
-		} else {
-			buf.WriteString(
-				fmt.Sprintf("%s [total %1.2f ms]\n",
-					pe.Name,
-					float64(pe.TotalTime.Nanoseconds())/float64(pe.Invocations*1e6),
-				),
-			)
-		}
-	}
-
-	// Encode nested scopes
-	for _, child := range pe.Children {
-		buf.WriteString(child.String())
-	}
-
-	return buf.String()
 }
