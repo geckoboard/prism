@@ -42,22 +42,30 @@ func Shutdown() {
 	// Close shipChan and wait for shipper to exit
 	close(shipChan)
 	<-shipSigChan
+
+	fmt.Printf("Prism allocs: %d\n\n", totalAllocs)
 	close(shipSigChan)
 }
 
 // Create a new profile.
 func BeginProfile(name string) {
+	tick := time.Now()
+
 	profileMutex.Lock()
 	defer profileMutex.Unlock()
 
 	tid := threadId()
-	s := makeEntry(name, 0)
-	s.ThreadId = tid
-	activeProfiles[tid] = s
+	pe := makeEntry(name, 0)
+	activeProfiles[tid] = pe
+	pe.ThreadId = tid
+	pe.EnteredAt = time.Now()
+	pe.TotalProfileOverhead += time.Since(tick)
 }
 
 // End an active profile.
 func EndProfile() {
+	tick := time.Now()
+
 	profileMutex.Lock()
 	tid := threadId()
 	profile, valid := activeProfiles[tid]
@@ -69,12 +77,15 @@ func EndProfile() {
 	}
 
 	// Update profile stats and ship it
-	profile.updateStats()
+	profile.updateStats(time.Since(tick))
+	profile.subtractOverhead()
 	shipChan <- profile
 }
 
 // Enter a scope inside the currently active profile.
 func Enter(name string) {
+	tick := time.Now()
+
 	profileMutex.Lock()
 	defer profileMutex.Unlock()
 
@@ -107,10 +118,13 @@ func Enter(name string) {
 	pe.Parent = profile
 	pe.EnteredAt = time.Now()
 	activeProfiles[tid] = pe
+	pe.TotalProfileOverhead += time.Since(tick)
 }
 
 // Exit a scope inside the currently active profile.
 func Leave() {
+	tick := time.Now()
+
 	profileMutex.Lock()
 	defer profileMutex.Unlock()
 
@@ -125,8 +139,8 @@ func Leave() {
 		panic(fmt.Sprintf("profiler: [BUG] attempted to exit an active profile (tid %s)", tid))
 	}
 
-	pe.updateStats()
-
 	// Pop parent
 	activeProfiles[tid] = pe.Parent
+
+	pe.updateStats(time.Since(tick))
 }

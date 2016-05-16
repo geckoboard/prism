@@ -2,6 +2,8 @@ package profiler
 
 import (
 	"math"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,28 +21,42 @@ type Entry struct {
 	TotalTime   time.Duration `json:"total_time"`
 	Invocations int           `json:"invocations"`
 
+	TotalProfileOverhead time.Duration `json:"-"`
+
 	Children []*Entry `json:"children"`
 	Parent   *Entry   `json:"-"`
 }
 
-// Allocate and initialize a new profile entry.
-func makeEntry(name string, depth int) *Entry {
-	return &Entry{
-		Name:  name,
-		Depth: depth,
+var totalAllocs uint64
 
-		Children: make([]*Entry, 0),
-
-		EnteredAt: time.Now(),
-
-		MinTime: time.Duration(math.MaxInt64),
-		MaxTime: 0,
-	}
+// Use a pool to reduce the number of entry allocations
+var entryPool = sync.Pool{
+	New: func() interface{} {
+		atomic.AddUint64(&totalAllocs, 1)
+		return &Entry{}
+	},
 }
 
-// Update profile entry time stats.
-func (pe *Entry) updateStats() {
-	elapsedTime := time.Since(pe.EnteredAt)
+// Allocate and initialize a new profile entry.
+func makeEntry(name string, depth int) *Entry {
+	entry := entryPool.Get().(*Entry)
+	entry.Name = name
+	entry.Depth = depth
+	entry.MinTime = time.Duration(math.MaxInt64)
+	entry.MaxTime = 0
+	entry.TotalTime = 0
+	entry.Invocations = 0
+	entry.TotalProfileOverhead = 0
+
+	entry.Children = make([]*Entry, 0)
+	entry.Parent = nil
+
+	return entry
+}
+
+// Update profile entry time stats taking into account profiler overhead.
+func (pe *Entry) updateStats(overhead time.Duration) {
+	elapsedTime := time.Since(pe.EnteredAt) - overhead
 	pe.Invocations++
 	if elapsedTime < pe.MinTime {
 		pe.MinTime = elapsedTime
@@ -49,4 +65,27 @@ func (pe *Entry) updateStats() {
 		pe.MaxTime = elapsedTime
 	}
 	pe.TotalTime += elapsedTime
+	pe.TotalProfileOverhead += overhead
+}
+
+// Recursively subtract aggregated child node overhead from parent's total time.
+func (pe *Entry) subtractOverhead() {
+	var childOverhead time.Duration = 0
+	for _, child := range pe.Children {
+		childOverhead += child.TotalProfileOverhead
+	}
+
+	pe.TotalTime -= childOverhead
+}
+
+// Recursively free profile entries.
+func (pe *Entry) free() {
+	// Free children first
+	for _, child := range pe.Children {
+		child.free()
+	}
+
+	// Clear our children slice and return entry to the pool
+	pe.Children = nil
+	entryPool.Put(pe)
 }

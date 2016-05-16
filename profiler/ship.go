@@ -27,10 +27,11 @@ func nullProfileShipper() {
 	}()
 
 	for {
-		_, ok := <-shipChan
+		profile, ok := <-shipChan
 		if !ok {
 			return
 		}
+		profile.free()
 	}
 }
 
@@ -60,6 +61,7 @@ func jsonProfileShipper() {
 		fpath := outputFile(profile, "json")
 		f, err := os.Create(fpath)
 		if err != nil {
+			profile.free()
 			fmt.Fprintf(os.Stderr, "profiler: could not create output file %s due to %s; dropping profile\n", fpath, err.Error())
 			continue
 		}
@@ -67,6 +69,7 @@ func jsonProfileShipper() {
 		data, _ := json.Marshal(profile)
 		f.Write(data)
 		f.Close()
+		profile.free()
 	}
 }
 
