@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
@@ -22,6 +23,8 @@ var (
 	errMissingPathToProject = errors.New("missing path_to_project argument")
 	errNoProfileTargets     = errors.New("no profile targets specified")
 	errMissingRunCmd        = errors.New("run-cmd not specified")
+
+	tokenizeRegex = regexp.MustCompile("'.+'|\".+\"|\\S+")
 )
 
 func ProfileProject(ctx *cli.Context) error {
@@ -171,7 +174,7 @@ func buildProject(tmpDir, tmpAbsProjPath, buildCmd string) error {
 
 	// Setup the build command and set up its cwd and env overrides
 	var execCmd *exec.Cmd
-	tokens := util.TokenizeArgs(buildCmd)
+	tokens := tokenizeArgs(buildCmd)
 	if len(tokens) > 1 {
 		execCmd = exec.Command(tokens[0], tokens[1:]...)
 	} else {
@@ -205,7 +208,7 @@ func runProject(tmpDir, tmpAbsProjPath, runCmd string) error {
 
 	// Setup the run command and set up its cwd and env overrides
 	var execCmd *exec.Cmd
-	tokens := util.TokenizeArgs(runCmd)
+	tokens := tokenizeArgs(runCmd)
 	if len(tokens) > 1 {
 		execCmd = exec.Command(tokens[0], tokens[1:]...)
 	} else {
@@ -246,4 +249,10 @@ func runProject(tmpDir, tmpAbsProjPath, runCmd string) error {
 // Delete temp project copy.
 func deleteClonedProject(path string) {
 	os.RemoveAll(path)
+}
+
+// Split args into tokens using whitespace as the delimiter. This function
+// behaves similar to strings.Fields but also preseves quoted sections.
+func tokenizeArgs(args string) []string {
+	return tokenizeRegex.FindAllString(args, -1)
 }
