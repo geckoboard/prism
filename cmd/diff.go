@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -8,39 +9,47 @@ import (
 
 	"golang.org/x/crypto/ssh/terminal"
 
-	"github.com/codegangsta/cli"
 	"github.com/geckoboard/prism/profiler"
 	"github.com/geckoboard/prism/util"
+	"github.com/urfave/cli"
 )
 
 const (
 	diffEpsilon = 0.01
 )
 
+var (
+	errNotEnoughProfiles      = errors.New(`"diff" requires at least 2 profiles`)
+	errNoDiffColumnsSpecified = errors.New("no table columns specified for diff output")
+)
+
 type idToEntryMap map[int]*profiler.Entry
 type correlatedEntriesMap map[string]idToEntryMap
 
 // Pretty print a n-way diff between two or more profiles.
-func DiffProfiles(ctx *cli.Context) {
+func DiffProfiles(ctx *cli.Context) error {
 	var err error
 
 	args := ctx.Args()
 	if len(args) < 2 {
-		util.ExitWithError("error: diff requires at least 2 profiles")
+		return errNotEnoughProfiles
 	}
 
-	diffCols := util.ParseTableColumList(ctx.String("columns"))
+	diffCols, err := util.ParseTableColumList(ctx.String("columns"))
+	if err != nil {
+		return err
+	}
 	if len(diffCols) == 0 {
-		util.ExitWithError("error: no diff table columns specified")
+		return errNoDiffColumnsSpecified
 	}
 
 	threshold := ctx.Float64("threshold")
 
 	profiles := make([]*profiler.Entry, len(args))
 	for index, arg := range args {
-		profiles[index], err = util.LoadJsonProfile(arg)
+		profiles[index], err = profiler.LoadProfile(arg)
 		if err != nil {
-			util.ExitWithError(err.Error())
+			return err
 		}
 	}
 
@@ -51,6 +60,8 @@ func DiffProfiles(ctx *cli.Context) {
 	// If stdout is not a terminal we need to strip ANSI characters
 	stripAnsiChars := !terminal.IsTerminal(int(os.Stdout.Fd()))
 	diffTable.Write(os.Stdout, stripAnsiChars)
+
+	return nil
 }
 
 // Process each profile and return back a map which groups by function name

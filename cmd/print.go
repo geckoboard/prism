@@ -1,35 +1,44 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"golang.org/x/crypto/ssh/terminal"
 
-	"github.com/codegangsta/cli"
 	"github.com/geckoboard/prism/profiler"
 	"github.com/geckoboard/prism/util"
+	"github.com/urfave/cli"
 )
 
-func PrintProfile(ctx *cli.Context) {
+var (
+	errNoProfile               = errors.New(`"print" requires a profile argument`)
+	errNoPrintColumnsSpecified = errors.New("no table columns specified for printing profile")
+)
+
+func PrintProfile(ctx *cli.Context) error {
 	var err error
 
 	args := ctx.Args()
 	if len(args) != 1 {
-		util.ExitWithError("error: print requires a profile argument")
+		return errNoProfile
 	}
 
-	tableCols := util.ParseTableColumList(ctx.String("columns"))
+	tableCols, err := util.ParseTableColumList(ctx.String("columns"))
+	if err != nil {
+		return err
+	}
 	if len(tableCols) == 0 {
-		util.ExitWithError("error: no table columns specified")
+		return errNoPrintColumnsSpecified
 	}
 
 	threshold := ctx.Float64("threshold")
 
-	profile, err := util.LoadJsonProfile(args[0])
+	profile, err := profiler.LoadProfile(args[0])
 	if err != nil {
-		util.ExitWithError(err.Error())
+		return err
 	}
 
 	profTable := tabularizeProfile(profile, tableCols, threshold)
@@ -37,6 +46,8 @@ func PrintProfile(ctx *cli.Context) {
 	// If stdout is not a terminal we need to strip ANSI characters
 	stripAnsiChars := !terminal.IsTerminal(int(os.Stdout.Fd()))
 	profTable.Write(os.Stdout, stripAnsiChars)
+
+	return nil
 }
 
 // Create a table with profile details.

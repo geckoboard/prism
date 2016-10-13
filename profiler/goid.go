@@ -41,7 +41,7 @@ func threadId() uint64 {
 	return n
 }
 
-// parseUintBytes is like strconv.ParseUint, but using a []byte.
+// parseUintBytes works like strconv.ParseUint, but using a []byte.
 func parseUintBytes(s []byte, base int, bitSize int) (n uint64, err error) {
 	var cutoff, maxVal uint64
 
