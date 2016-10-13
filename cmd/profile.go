@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,26 +13,31 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/codegangsta/cli"
 	"github.com/geckoboard/prism/tools"
 	"github.com/geckoboard/prism/util"
+	"github.com/urfave/cli"
 )
 
-//
-func ProfileProject(ctx *cli.Context) {
+var (
+	errMissingPathToProject = errors.New("missing path_to_project argument")
+	errNoProfileTargets     = errors.New("no profile targets specified")
+	errMissingRunCmd        = errors.New("run-cmd not specified")
+)
+
+func ProfileProject(ctx *cli.Context) error {
 	args := ctx.Args()
 	if len(args) != 1 {
-		util.ExitWithError("error: missing path_to_project argument")
+		return errMissingPathToProject
 	}
 
 	profileFuncs := ctx.StringSlice("target")
 	if len(profileFuncs) == 0 {
-		util.ExitWithError("error: no profile targets specified")
+		return errNoProfileTargets
 	}
 
 	runCmd := ctx.String("run-cmd")
 	if runCmd == "" {
-		util.ExitWithError("error: run-cmd not specified")
+		return errMissingRunCmd
 	}
 
 	if !strings.HasSuffix("/", args[0]) {
@@ -39,14 +45,14 @@ func ProfileProject(ctx *cli.Context) {
 	}
 	absProjPath, err := filepath.Abs(filepath.Dir(args[0]))
 	if err != nil {
-		util.ExitWithError(err.Error())
+		return err
 	}
 	absProjPath += "/"
 
 	// Clone project
 	tmpDir, tmpAbsProjPath, err := cloneProject(absProjPath, ctx.String("output-folder"))
 	if err != nil {
-		util.ExitWithError(err.Error())
+		return err
 	}
 	if !ctx.Bool("preserve-output") {
 		defer deleteClonedProject(tmpDir)
@@ -55,22 +61,19 @@ func ProfileProject(ctx *cli.Context) {
 	// Analyze project
 	goPackage, err := tools.NewGoPackage(tmpAbsProjPath)
 	if err != nil {
-		defer util.ExitWithError(err.Error())
-		return
+		return err
 	}
 
 	// Select profile targets
 	profileTargets, err := goPackage.Find(profileFuncs...)
 	if err != nil {
-		defer util.ExitWithError(err.Error())
-		return
+		return err
 	}
 
 	// Inject profiler
 	updatedFiles, err := goPackage.Patch(profileTargets, tools.InjectProfiler(tmpAbsProjPath))
 	if err != nil {
-		defer util.ExitWithError(err.Error())
-		return
+		return err
 	}
 	fmt.Printf("profile: updated %d files\n", updatedFiles)
 
@@ -79,17 +82,11 @@ func ProfileProject(ctx *cli.Context) {
 	if buildCmd != "" {
 		err = buildProject(tmpDir, tmpAbsProjPath, buildCmd)
 		if err != nil {
-			defer util.ExitWithError(err.Error())
-			return
+			return err
 		}
 	}
 
-	// Run
-	err = runProject(tmpDir, tmpAbsProjPath, runCmd)
-	if err != nil {
-		defer util.ExitWithError(err.Error())
-		return
-	}
+	return runProject(tmpDir, tmpAbsProjPath, runCmd)
 }
 
 // Clone project and return path to the cloned project.

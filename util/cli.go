@@ -16,14 +16,8 @@ import (
 
 var (
 	tokenRegex         = regexp.MustCompile("'.+'|\".+\"|\\S+")
-	tableColSplitRegex = regexp.MustCompile(`\s*?,\s*?`)
+	tableColSplitRegex = regexp.MustCompile(`\s*,\s*`)
 )
-
-// Output message to stderr and exit with status 1.
-func ExitWithError(msgFmt string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, msgFmt+"\n", args...)
-	os.Exit(1)
-}
 
 // Load json profile.
 func LoadJsonProfile(file string) (*profiler.Entry, error) {
@@ -180,7 +174,7 @@ func (dc TableColumnType) Header() string {
 }
 
 // Parse a comma delimited set of column types.
-func ParseTableColumList(list string) []TableColumnType {
+func ParseTableColumList(list string) ([]TableColumnType, error) {
 	cols := make([]TableColumnType, 0)
 	for _, colName := range tableColSplitRegex.Split(list, -1) {
 		var col TableColumnType
@@ -196,10 +190,10 @@ func ParseTableColumList(list string) []TableColumnType {
 		case "invocations":
 			col = TableColInvocations
 		default:
-			ExitWithError("error: unsupported column name '%s'; supported column names are: total, avg, min, max, invocations", colName)
+			return nil, fmt.Errorf("unsupported column name '%s'; supported column names are: total, avg, min, max, invocations", colName)
 		}
 		cols = append(cols, col)
 	}
 
-	return cols
+	return cols, nil
 }

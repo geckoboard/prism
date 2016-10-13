@@ -1,10 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
-	"github.com/codegangsta/cli"
 	"github.com/geckoboard/prism/cmd"
+	"github.com/urfave/cli"
 )
 
 func main() {
@@ -87,5 +88,9 @@ func main() {
 		},
 	}
 
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
+		os.Exit(1)
+	}
 }
