@@ -13,7 +13,7 @@ import (
 	"syscall"
 
 	"github.com/codegangsta/cli"
-	"github.com/geckoboard/prism/inject"
+	"github.com/geckoboard/prism/tools"
 	"github.com/geckoboard/prism/util"
 )
 
@@ -53,25 +53,26 @@ func ProfileProject(ctx *cli.Context) {
 	}
 
 	// Analyze project
-	analyzer, err := inject.NewAnalyzer(tmpAbsProjPath, absProjPath)
+	goPackage, err := tools.NewGoPackage(tmpAbsProjPath)
 	if err != nil {
 		defer util.ExitWithError(err.Error())
 		return
 	}
 
 	// Select profile targets
-	profileTargets, err := analyzer.ProfileTargets(profileFuncs)
-	fmt.Printf("profile: call graph analyzed %d target(s) and detected %d locations for injecting profiler hooks\n", len(profileFuncs), len(profileTargets))
-
-	// Inject profiler
-	injector := inject.NewInjector(tmpAbsProjPath, absProjPath)
-	touchedFiles, err := injector.Hook(profileTargets)
+	profileTargets, err := goPackage.Find(profileFuncs...)
 	if err != nil {
 		defer util.ExitWithError(err.Error())
 		return
 	}
 
-	fmt.Printf("profile: updated %d files\n", touchedFiles)
+	// Inject profiler
+	updatedFiles, err := goPackage.Patch(profileTargets, tools.InjectProfiler(tmpAbsProjPath))
+	if err != nil {
+		defer util.ExitWithError(err.Error())
+		return
+	}
+	fmt.Printf("profile: updated %d files\n", updatedFiles)
 
 	// Handle build step if a build command is specified
 	buildCmd := ctx.String("build-cmd")

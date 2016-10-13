@@ -43,7 +43,6 @@ func Shutdown() {
 	close(shipChan)
 	<-shipSigChan
 
-	fmt.Printf("Prism allocs: %d\n\n", totalAllocs)
 	close(shipSigChan)
 }
 
