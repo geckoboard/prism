@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/crypto/ssh/terminal"
 
+	"github.com/geckoboard/cli-table"
 	"github.com/geckoboard/prism/profiler"
-	"github.com/geckoboard/prism/util"
 	"github.com/urfave/cli"
 )
 
@@ -35,7 +35,7 @@ func DiffProfiles(ctx *cli.Context) error {
 		return errNotEnoughProfiles
 	}
 
-	diffCols, err := util.ParseTableColumList(ctx.String("columns"))
+	diffCols, err := parseTableColumList(ctx.String("columns"))
 	if err != nil {
 		return err
 	}
@@ -58,8 +58,11 @@ func DiffProfiles(ctx *cli.Context) error {
 	diffTable := tabularizeDiff(profiles, correlMap, diffCols, threshold)
 
 	// If stdout is not a terminal we need to strip ANSI characters
-	stripAnsiChars := !terminal.IsTerminal(int(os.Stdout.Fd()))
-	diffTable.Write(os.Stdout, stripAnsiChars)
+	filter := table.StripAnsi
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		filter = table.PreserveAnsi
+	}
+	diffTable.Write(os.Stdout, filter)
 
 	return nil
 }
@@ -97,35 +100,28 @@ func populateEntryGroups(profileId int, pe *profiler.Entry, entryGroupsByName co
 
 // Generate a table with that summarizes all profiles and includes a speedup
 // factor for each profile compared to the first (baseline) profile.
-func tabularizeDiff(profiles []*profiler.Entry, entryGroupsByName correlatedEntriesMap, diffCols []util.TableColumnType, threshold float64) *util.Table {
-	t := &util.Table{
-		Headers:      make([]string, len(profiles)*len(diffCols)+1),
-		HeaderGroups: make([]util.TableHeaderGroup, len(profiles)+1),
-		Rows:         make([][]string, 0),
-		Padding:      1,
-	}
+func tabularizeDiff(profiles []*profiler.Entry, entryGroupsByName correlatedEntriesMap, diffCols []tableColumnType, threshold float64) *table.Table {
+	t := table.New(len(profiles)*len(diffCols) + 1)
+	t.SetPadding(1)
 
 	// Populate headers
-	t.Alignment = make([]util.Alignment, len(t.Headers))
-
-	t.Alignment[0] = util.AlignLeft
-	t.Headers[0] = "call stack"
-	t.HeaderGroups[0].ColSpan = 1
+	t.SetHeader(0, "call stack", table.AlignLeft)
+	t.AddHeaderGroup(1, "", table.AlignLeft)
 
 	startOffset := 1
 	for index, _ := range profiles {
 		baseIndex := startOffset + index*len(diffCols)
-
-		if index == 0 {
-			t.HeaderGroups[startOffset+index].Header = "baseline"
-		} else {
-			t.HeaderGroups[startOffset+index].Header = fmt.Sprintf("profile %d", index)
+		var groupTitle string
+		switch index {
+		case 0:
+			groupTitle = "baseline"
+		default:
+			groupTitle = fmt.Sprintf("profile %d", index)
 		}
-		t.HeaderGroups[startOffset+index].ColSpan = len(diffCols)
+		t.AddHeaderGroup(len(diffCols), groupTitle, table.AlignLeft)
 
 		for dIndex, dType := range diffCols {
-			t.Alignment[baseIndex+dIndex] = util.AlignRight
-			t.Headers[baseIndex+dIndex] = dType.Header()
+			t.SetHeader(baseIndex+dIndex, dType.Header(), table.AlignRight)
 		}
 	}
 
@@ -136,7 +132,7 @@ func tabularizeDiff(profiles []*profiler.Entry, entryGroupsByName correlatedEntr
 }
 
 // Populate table rows with profile entry metrics and comparison data.
-func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName correlatedEntriesMap, t *util.Table, diffCols []util.TableColumnType, threshold float64) {
+func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName correlatedEntriesMap, t *table.Table, diffCols []tableColumnType, threshold float64) {
 	row := make([]string, numProfiles*len(diffCols)+1)
 
 	// Fill in call
@@ -167,30 +163,30 @@ func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName cor
 
 			for dIndex, dType := range diffCols {
 				switch dType {
-				case util.TableColTotal:
+				case tableColTotal:
 					row[baseIndex+dIndex] = fmtDiff(baseTotalTime, totalTime, threshold)
-				case util.TableColAvg:
+				case tableColAvg:
 					row[baseIndex+dIndex] = fmtDiff(baseAvgTime, avgTime, threshold)
-				case util.TableColMin:
+				case tableColMin:
 					row[baseIndex+dIndex] = fmtDiff(baseMinTime, minTime, threshold)
-				case util.TableColMax:
+				case tableColMax:
 					row[baseIndex+dIndex] = fmtDiff(baseMaxTime, maxTime, threshold)
-				case util.TableColInvocations:
+				case tableColInvocations:
 					row[baseIndex+dIndex] = fmt.Sprintf("%d", entry.Invocations)
 				}
 			}
 		} else {
 			for dIndex, dType := range diffCols {
 				switch dType {
-				case util.TableColTotal:
+				case tableColTotal:
 					row[baseIndex+dIndex] = fmt.Sprintf("%1.2f (---)", totalTime)
-				case util.TableColAvg:
+				case tableColAvg:
 					row[baseIndex+dIndex] = fmt.Sprintf("%1.2f (---)", avgTime)
-				case util.TableColMin:
+				case tableColMin:
 					row[baseIndex+dIndex] = fmt.Sprintf("%1.2f (---)", minTime)
-				case util.TableColMax:
+				case tableColMax:
 					row[baseIndex+dIndex] = fmt.Sprintf("%1.2f (---)", maxTime)
-				case util.TableColInvocations:
+				case tableColInvocations:
 					row[baseIndex+dIndex] = fmt.Sprintf("%d", entry.Invocations)
 				}
 			}
@@ -198,7 +194,7 @@ func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName cor
 	}
 
 	// Append row to table
-	t.Rows = append(t.Rows, row)
+	t.Append(row)
 
 	//  Process children
 	for _, child := range pe.Children {

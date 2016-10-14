@@ -8,8 +8,8 @@ import (
 
 	"golang.org/x/crypto/ssh/terminal"
 
+	"github.com/geckoboard/cli-table"
 	"github.com/geckoboard/prism/profiler"
-	"github.com/geckoboard/prism/util"
 	"github.com/urfave/cli"
 )
 
@@ -26,7 +26,7 @@ func PrintProfile(ctx *cli.Context) error {
 		return errNoProfile
 	}
 
-	tableCols, err := util.ParseTableColumList(ctx.String("columns"))
+	tableCols, err := parseTableColumList(ctx.String("columns"))
 	if err != nil {
 		return err
 	}
@@ -44,27 +44,24 @@ func PrintProfile(ctx *cli.Context) error {
 	profTable := tabularizeProfile(profile, tableCols, threshold)
 
 	// If stdout is not a terminal we need to strip ANSI characters
-	stripAnsiChars := !terminal.IsTerminal(int(os.Stdout.Fd()))
-	profTable.Write(os.Stdout, stripAnsiChars)
+	filter := table.StripAnsi
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		filter = table.PreserveAnsi
+	}
+	profTable.Write(os.Stdout, filter)
 
 	return nil
 }
 
 // Create a table with profile details.
-func tabularizeProfile(profile *profiler.Entry, tableCols []util.TableColumnType, threshold float64) *util.Table {
-	t := &util.Table{
-		Headers:   make([]string, len(tableCols)+1),
-		Alignment: make([]util.Alignment, len(tableCols)+1),
-		Rows:      make([][]string, 0),
-		Padding:   1,
-	}
+func tabularizeProfile(profile *profiler.Entry, tableCols []tableColumnType, threshold float64) *table.Table {
+	t := table.New(len(tableCols) + 1)
+	t.SetPadding(1)
 
 	// Setup headers and alignment settings
-	t.Alignment[0] = util.AlignLeft
-	t.Headers[0] = "call stack"
+	t.SetHeader(0, "call stack", table.AlignLeft)
 	for dIndex, dType := range tableCols {
-		t.Alignment[dIndex+1] = util.AlignRight
-		t.Headers[dIndex+1] = dType.Header()
+		t.SetHeader(dIndex+1, dType.Header(), table.AlignRight)
 	}
 
 	// Populate rows
@@ -74,7 +71,7 @@ func tabularizeProfile(profile *profiler.Entry, tableCols []util.TableColumnType
 }
 
 // Populate table rows with profile entry metrics.
-func populateProfileRows(pe *profiler.Entry, t *util.Table, tableCols []util.TableColumnType, threshold float64) {
+func populateProfileRows(pe *profiler.Entry, t *table.Table, tableCols []tableColumnType, threshold float64) {
 	row := make([]string, len(tableCols)+1)
 
 	// Fill in call
@@ -95,21 +92,21 @@ func populateProfileRows(pe *profiler.Entry, t *util.Table, tableCols []util.Tab
 	baseIndex := 1
 	for dIndex, dType := range tableCols {
 		switch dType {
-		case util.TableColTotal:
+		case tableColTotal:
 			row[baseIndex+dIndex] = fmtEntry(totalTime, threshold)
-		case util.TableColAvg:
+		case tableColAvg:
 			row[baseIndex+dIndex] = fmtEntry(avgTime, threshold)
-		case util.TableColMin:
+		case tableColMin:
 			row[baseIndex+dIndex] = fmtEntry(minTime, threshold)
-		case util.TableColMax:
+		case tableColMax:
 			row[baseIndex+dIndex] = fmtEntry(maxTime, threshold)
-		case util.TableColInvocations:
+		case tableColInvocations:
 			row[baseIndex+dIndex] = fmt.Sprintf("%d", pe.Invocations)
 		}
 	}
 
 	// Append row to table
-	t.Rows = append(t.Rows, row)
+	t.Append(row)
 
 	//  Process children
 	for _, child := range pe.Children {
