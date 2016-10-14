@@ -1,14 +1,14 @@
-package util
+package cmd
 
 import (
 	"bytes"
 	"io"
 )
 
-// Padded writer wraps an io.Writer and inserts a customizable padding to the
+// padded writer wraps an io.Writer and inserts a customizable padding to the
 // beginning of every line. It buffers incoming data and flushes it whenever
 // a new line is encountered or the writer is manually flushed.
-type PaddedWriter struct {
+type paddedWriter struct {
 	w         io.Writer
 	buf       *bytes.Buffer
 	padPrefix []byte
@@ -16,10 +16,10 @@ type PaddedWriter struct {
 }
 
 // Wrap a io.Writer with a writer that prepends pad to the beginning of each line.
-// An optional color argument containing an ANSI escape codemay be specified to
+// An optional color argument containing an ANSI escape code may be specified to
 // colorize output for color terminals.
-func NewPaddedWriter(w io.Writer, pad, color string) *PaddedWriter {
-	pw := &PaddedWriter{
+func NewPaddedWriter(w io.Writer, pad, color string) *paddedWriter {
+	pw := &paddedWriter{
 		w:         w,
 		buf:       new(bytes.Buffer),
 		padPrefix: []byte(pad),
@@ -34,7 +34,7 @@ func NewPaddedWriter(w io.Writer, pad, color string) *PaddedWriter {
 }
 
 // Implements io.Writer.
-func (pw *PaddedWriter) Write(data []byte) (int, error) {
+func (pw *paddedWriter) Write(data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
 	}
@@ -74,7 +74,7 @@ func (pw *PaddedWriter) Write(data []byte) (int, error) {
 }
 
 // Flush buffered line.
-func (pw *PaddedWriter) Flush() {
+func (pw *paddedWriter) Flush() {
 	if pw.buf.Len() == 0 {
 		return
 	}

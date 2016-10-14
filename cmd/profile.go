@@ -15,7 +15,6 @@ import (
 	"syscall"
 
 	"github.com/geckoboard/prism/tools"
-	"github.com/geckoboard/prism/util"
 	"github.com/urfave/cli"
 )
 
@@ -169,8 +168,8 @@ func buildProject(tmpDir, tmpAbsProjPath, buildCmd string) error {
 	fmt.Printf("profile: building project (%s)\n", buildCmd)
 
 	// Setup buffered output writers
-	stdout := util.NewPaddedWriter(os.Stdout, "profile: [build] > ", "\033[32m")
-	stderr := util.NewPaddedWriter(os.Stderr, "profile: [build] > ", "\033[32m")
+	stdout := NewPaddedWriter(os.Stdout, "profile: [build] > ", "\033[32m")
+	stderr := NewPaddedWriter(os.Stderr, "profile: [build] > ", "\033[32m")
 
 	// Setup the build command and set up its cwd and env overrides
 	var execCmd *exec.Cmd
@@ -203,8 +202,8 @@ func runProject(tmpDir, tmpAbsProjPath, runCmd string) error {
 	fmt.Printf("profile: running patched project (%s)\n", runCmd)
 
 	// Setup buffered output writers
-	stdout := util.NewPaddedWriter(os.Stdout, "profile: [run] > ", "\033[32m")
-	stderr := util.NewPaddedWriter(os.Stderr, "profile: [run] > ", "\033[32m")
+	stdout := NewPaddedWriter(os.Stdout, "profile: [run] > ", "\033[32m")
+	stderr := NewPaddedWriter(os.Stderr, "profile: [run] > ", "\033[32m")
 
 	// Setup the run command and set up its cwd and env overrides
 	var execCmd *exec.Cmd
