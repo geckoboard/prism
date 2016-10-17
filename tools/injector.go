@@ -7,17 +7,19 @@ import (
 )
 
 var (
-	profilerImports = []string{"github.com/geckoboard/prism/profiler"}
+	profilerImports = []string{"prismProfiler github.com/geckoboard/prism/profiler"}
+	sinkImports     = []string{"prismSink github.com/geckoboard/prism/profiler/sink"}
 )
 
 // Return a PatchFunc that injects our profiler instrumentation code in all
 // functions that are reachable from the profile targets that the user specified.
-func InjectProfiler(pathToPackage string) PatchFunc {
+func InjectProfiler(pathToPackage, profileDir string) PatchFunc {
 	basePkg, _ := qualifiedPkgName(pathToPackage)
 	pkgEntryFn := basePkg + "/main"
 
 	return func(cgNode *CallGraphNode, fnDeclNode *ast.BlockStmt) (modifiedAST bool, extraImports []string) {
 		enterFn, leaveFn := profileMethods(cgNode.Depth)
+		imports := profilerImports
 
 		// Append our instrumentation calls to the top of the function
 		fnDeclNode.List = append(
@@ -26,14 +28,14 @@ func InjectProfiler(pathToPackage string) PatchFunc {
 					&ast.BasicLit{
 						token.NoPos,
 						token.STRING,
-						fmt.Sprintf(`profiler.%s("%s")`, enterFn, cgNode.Name),
+						fmt.Sprintf(`prismProfiler.%s("%s")`, enterFn, cgNode.Name),
 					},
 				},
 				&ast.ExprStmt{
 					&ast.BasicLit{
 						token.NoPos,
 						token.STRING,
-						fmt.Sprintf(`defer profiler.%s()`, leaveFn),
+						fmt.Sprintf(`defer prismProfiler.%s()`, leaveFn),
 					},
 				},
 			},
@@ -51,22 +53,24 @@ func InjectProfiler(pathToPackage string) PatchFunc {
 						&ast.BasicLit{
 							token.NoPos,
 							token.STRING,
-							`profiler.Init()`,
+							fmt.Sprintf("prismProfiler.Init(prismSink.NewFileSink(%q))", profileDir),
 						},
 					},
 					&ast.ExprStmt{
 						&ast.BasicLit{
 							token.NoPos,
 							token.STRING,
-							`defer profiler.Shutdown()`,
+							`defer prismProfiler.Shutdown()`,
 						},
 					},
 				},
 				fnDeclNode.List...,
 			)
+
+			imports = append(imports, sinkImports...)
 		}
 
-		return true, profilerImports
+		return true, imports
 	}
 }
 

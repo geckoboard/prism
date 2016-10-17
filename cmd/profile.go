@@ -73,7 +73,10 @@ func ProfileProject(ctx *cli.Context) error {
 	}
 
 	// Inject profiler
-	updatedFiles, err := goPackage.Patch(profileTargets, tools.InjectProfiler(tmpAbsProjPath))
+	updatedFiles, err := goPackage.Patch(
+		profileTargets,
+		tools.InjectProfiler(tmpAbsProjPath, ctx.String("profile-folder")),
+	)
 	if err != nil {
 		return err
 	}

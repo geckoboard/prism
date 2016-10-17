@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/user"
 
 	"github.com/geckoboard/prism/cmd"
 	"github.com/urfave/cli"
@@ -45,6 +46,11 @@ func main() {
 				cli.BoolFlag{
 					Name:  "preserve-output",
 					Usage: "preserve patched project post build",
+				},
+				cli.StringFlag{
+					Name:  "profile-folder",
+					Usage: "specify the output folder for captured profiles",
+					Value: defaultOutputDir(),
 				},
 			},
 		},
@@ -93,4 +99,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
 		os.Exit(1)
 	}
+}
+
+// Get default output dir for profiles.
+func defaultOutputDir() string {
+	usr, err := user.Current()
+	if err != nil {
+		panic(err)
+	}
+	return usr.HomeDir + "/prism"
 }

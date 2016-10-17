@@ -2,8 +2,8 @@ package tools
 
 import (
 	"bytes"
-	"fmt"
 	"go/ast"
+	"strings"
 
 	"golang.org/x/tools/go/ast/astutil"
 )
@@ -46,7 +46,12 @@ func (v *funcVisitor) Process(parsedFile *parsedGoFile) bool {
 
 	if len(v.extraImports) != 0 {
 		for pkgName := range v.extraImports {
-			astutil.AddImport(parsedFile.fset, parsedFile.astFile, pkgName)
+			tokens := strings.Fields(pkgName)
+			if len(tokens) > 1 {
+				astutil.AddNamedImport(parsedFile.fset, parsedFile.astFile, tokens[0], tokens[1])
+			} else {
+				astutil.AddImport(parsedFile.fset, parsedFile.astFile, tokens[0])
+			}
 		}
 		v.modifiedAST = true
 	}
@@ -70,7 +75,6 @@ func (v *funcVisitor) Visit(node ast.Node) ast.Visitor {
 
 	// Check if we need to hook this function
 	fqName := qualifiedNodeName(fnDecl, v.parsedFile.pkgName)
-	fmt.Printf("FQ: %q\n", fqName)
 	cgNode, isTarget := v.uniqueTargetMap[fqName]
 	if !isTarget {
 		return nil

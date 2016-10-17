@@ -79,10 +79,10 @@ func (pe *Entry) subtractOverhead() {
 }
 
 // Recursively free profile entries.
-func (pe *Entry) free() {
+func (pe *Entry) Free() {
 	// Free children first
 	for _, child := range pe.Children {
-		child.free()
+		child.Free()
 	}
 
 	// Clear our children slice and return entry to the pool
