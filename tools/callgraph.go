@@ -8,17 +8,6 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Option flags that can be passed to the callgraph builder.
-type CallGraphBuildOption uint8
-
-const (
-	// Exclude calls to vendored deps from callgraphs.
-	IgnoreVendoredDeps CallGraphBuildOption = iota
-
-	// Include calls to vendored deps in callgraphs.
-	IncludeVendoredDeps
-)
-
 // A section of the callgraph that is reachable through a Target root node via
 // one or more hops.
 type CallGraphNode struct {
@@ -55,21 +44,30 @@ type ProfileTarget struct {
 // the use of Rapid Type Analysis (RTA).
 //
 // The discovery algorithm only considers functions whose FQN begins with the
-// processed root package name. In addition, unless the callgraph was built with the
-// IncludeVendoredDeps option, calls to vendored dependencies are also excluded
-// from the callgraph.
-func (pt *ProfileTarget) CallGraph(buildOption CallGraphBuildOption) CallGraph {
+// processed root package name. This includes any vendored dependencies.
+func (pt *ProfileTarget) CallGraph() CallGraph {
 	cg := make(CallGraph, 0)
 	if pt.ssaFunc == nil {
-		return cg
+		return append(cg, &CallGraphNode{
+			Name: pt.QualifiedName,
+		})
 	}
 
 	var visitFn func(node *callgraph.Node, depth int)
+	calleeCache := make(map[string]struct{}, 0)
 	visitFn = func(node *callgraph.Node, depth int) {
 		target := ssaQualifiedFuncName(node.Func)
-		if !includeInGraph(target, pt.PkgPrefix, buildOption) {
+
+		if !includeInGraph(target, pt.PkgPrefix) {
 			return
 		}
+
+		// Watch out for callgraph loops; if we have already visited
+		// this edge bail out
+		if _, exists := calleeCache[target]; exists {
+			return
+		}
+		calleeCache[target] = struct{}{}
 
 		cg = append(cg, &CallGraphNode{
 			Name:  target,
@@ -90,9 +88,6 @@ func (pt *ProfileTarget) CallGraph(buildOption CallGraphBuildOption) CallGraph {
 }
 
 // Check if target can be include in callgraph.
-func includeInGraph(target string, pkgPrefix string, opt CallGraphBuildOption) bool {
-	if opt == IgnoreVendoredDeps && strings.Contains(target, "Godeps") {
-		return false
-	}
+func includeInGraph(target string, pkgPrefix string) bool {
 	return strings.HasPrefix(target, pkgPrefix)
 }

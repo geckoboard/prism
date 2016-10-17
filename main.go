@@ -52,6 +52,11 @@ func main() {
 					Usage: "specify the output folder for captured profiles",
 					Value: defaultOutputDir(),
 				},
+				cli.StringSliceFlag{
+					Name:  "profile-vendored-pkg",
+					Usage: "inject profile hooks to any vendored packages matching this regex. If left unspecified, no vendored packages will be hooked",
+					Value: &cli.StringSlice{},
+				},
 			},
 		},
 		{

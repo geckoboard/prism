@@ -72,10 +72,17 @@ func ProfileProject(ctx *cli.Context) error {
 		return err
 	}
 
-	// Inject profiler
+	// Inject profiler hooks and bootstrap code to main()
+	bootstrapTargets := []tools.ProfileTarget{
+		tools.ProfileTarget{
+			QualifiedName: goPackage.PkgPrefix + "/main",
+			PkgPrefix:     goPackage.PkgPrefix,
+		},
+	}
 	updatedFiles, err := goPackage.Patch(
-		profileTargets,
-		tools.InjectProfiler(tmpAbsProjPath, ctx.String("profile-folder")),
+		ctx.StringSlice("profile-vendored-pkg"),
+		tools.PatchCmd{profileTargets, tools.InjectProfiler()},
+		tools.PatchCmd{bootstrapTargets, tools.InjectProfilerBootstrap(ctx.String("profile-folder"))},
 	)
 	if err != nil {
 		return err
