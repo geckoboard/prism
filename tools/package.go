@@ -141,11 +141,11 @@ func (pkg *GoPackage) Find(targetList ...string) ([]ProfileTarget, error) {
 //
 // This function will automatically overwrite any files that are modified by the
 // given patch function.
-func (pkg *GoPackage) Patch(vendorPkgRegex []string, patchCmds ...PatchCmd) (updatedFiles int, err error) {
+func (pkg *GoPackage) Patch(vendorPkgRegex []string, patchCmds ...PatchCmd) (updatedFiles int, patchCount int, err error) {
 	// Parse package sources
 	parsedFiles, err := parsePackageSources(pkg.pathToPackage, vendorPkgRegex)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	// Expand the callgraph of hook targets and generate a visitor for each patch cmd
@@ -154,17 +154,22 @@ func (pkg *GoPackage) Patch(vendorPkgRegex []string, patchCmds ...PatchCmd) (upd
 		visitors[cmdIndex] = newFuncVisitor(uniqueTargetMap(cmd.Targets), cmd.PatchFn)
 	}
 
+	totalPatchCount := 0
+	visitorPatchCount := 0
+	visitorModifiedAST := false
 	for _, parsedFile := range parsedFiles {
 		modifiedAST := false
 		for _, visitor := range visitors {
-			modifiedAST = visitor.Process(parsedFile) || modifiedAST
+			visitorModifiedAST, visitorPatchCount = visitor.Process(parsedFile)
+			modifiedAST = visitorModifiedAST || modifiedAST
+			totalPatchCount += visitorPatchCount
 		}
 
 		// If the file was updated write it back to disk
 		if modifiedAST {
 			f, err := os.Create(parsedFile.filePath)
 			if err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 			printer.Fprint(f, parsedFile.fset, parsedFile.astFile)
 			f.Close()
@@ -172,7 +177,7 @@ func (pkg *GoPackage) Patch(vendorPkgRegex []string, patchCmds ...PatchCmd) (upd
 		}
 	}
 
-	return updatedFiles, err
+	return updatedFiles, totalPatchCount, err
 }
 
 // For each profile target, discover all reachable functions in its callgraph and

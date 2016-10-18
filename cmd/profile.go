@@ -79,7 +79,7 @@ func ProfileProject(ctx *cli.Context) error {
 			PkgPrefix:     goPackage.PkgPrefix,
 		},
 	}
-	updatedFiles, err := goPackage.Patch(
+	updatedFiles, patchCount, err := goPackage.Patch(
 		ctx.StringSlice("profile-vendored-pkg"),
 		tools.PatchCmd{profileTargets, tools.InjectProfiler()},
 		tools.PatchCmd{bootstrapTargets, tools.InjectProfilerBootstrap(ctx.String("profile-folder"))},
@@ -87,7 +87,7 @@ func ProfileProject(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("profile: updated %d files\n", updatedFiles)
+	fmt.Printf("profile: updated %d files and applied %d patches\n", updatedFiles, patchCount)
 
 	// Handle build step if a build command is specified
 	buildCmd := ctx.String("build-cmd")

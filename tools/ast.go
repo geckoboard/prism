@@ -25,6 +25,9 @@ type funcVisitor struct {
 
 	// Flag indicating whether the AST was modified.
 	modifiedAST bool
+
+	// The number of successfully applied patches.
+	patchCount int
 }
 
 // Create a new function node visitor.
@@ -36,12 +39,12 @@ func newFuncVisitor(uniqueTargetMap map[string]*CallGraphNode, patchFn PatchFunc
 }
 
 // Apply the visitor to a parsedFile and return a flag indicating whether the AST was modified.
-func (v *funcVisitor) Process(parsedFile *parsedGoFile) bool {
+func (v *funcVisitor) Process(parsedFile *parsedGoFile) (modifiedAST bool, patchCount int) {
 	// Reset visitor state
 	v.parsedFile = parsedFile
 	v.extraImports = make(map[string]struct{}, 0)
 	v.modifiedAST = false
-
+	v.patchCount = 0
 	ast.Walk(v, parsedFile.astFile)
 
 	if len(v.extraImports) != 0 {
@@ -56,7 +59,7 @@ func (v *funcVisitor) Process(parsedFile *parsedGoFile) bool {
 		v.modifiedAST = true
 	}
 
-	return v.modifiedAST
+	return v.modifiedAST, v.patchCount
 }
 
 // Implements ast.Visitor. Recursively looks for AST nodes that correspond to our
@@ -83,6 +86,7 @@ func (v *funcVisitor) Visit(node ast.Node) ast.Visitor {
 	modified, extraImports := v.patchFn(cgNode, fnDecl.Body)
 	if modified {
 		v.modifiedAST = true
+		v.patchCount++
 	}
 	if extraImports != nil {
 		for _, name := range extraImports {
