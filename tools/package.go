@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"golang.org/x/tools/go/ssa"
@@ -60,6 +61,10 @@ type GoPackage struct {
 	// A map of FQ function names to their SSA representation. This map
 	// only contains functions that can be used as profile injection points.
 	ssaFuncCandidates map[string]*ssa.Function
+
+	// The GOPATH for loading package dependencies. We intentionally override it
+	// so that the workspace path where this package's sources exist is included first.
+	GOPATH string
 }
 
 // Analyze all go files in pathToPackage as well as any other packages that are
@@ -72,7 +77,12 @@ func NewGoPackage(pathToPackage string) (*GoPackage, error) {
 		return nil, err
 	}
 
-	candidates, err := ssaCandidates(pathToPackage, fqPkgPrefix)
+	adjustedGoPath, err := adjustGoPath(pathToPackage)
+	if err != nil {
+		return nil, err
+	}
+
+	candidates, err := ssaCandidates(pathToPackage, fqPkgPrefix, adjustedGoPath)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +91,7 @@ func NewGoPackage(pathToPackage string) (*GoPackage, error) {
 		pathToPackage:     pathToPackage,
 		PkgPrefix:         fqPkgPrefix,
 		ssaFuncCandidates: candidates,
+		GOPATH:            adjustedGoPath,
 	}, nil
 }
 
@@ -266,4 +277,26 @@ func parsePackageSources(pathToPackage string, vendorPkgRegex []string) ([]*pars
 // Check if the given path points to a vendored dependency.
 func isVendoredDep(path string) bool {
 	return strings.Contains(path, "/Godeps/") || strings.Contains(path, "/vendor/")
+}
+
+// In order for go to correctly pick up any patched nested packages
+// instead of the original ones we need to override GOPATH so that
+// the workspace where the copied files reside is included first.
+func adjustGoPath(pathToPackage string) (string, error) {
+	separator := ':'
+	if runtime.GOOS == "windows" {
+		separator = ';'
+	}
+
+	workspaceDir, err := packageWorkspace(pathToPackage)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf(
+		"%s%c%s",
+		workspaceDir,
+		separator,
+		os.Getenv("GOPATH"),
+	), nil
 }
