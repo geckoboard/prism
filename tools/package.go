@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"golang.org/x/tools/go/ssa"
@@ -25,6 +26,15 @@ var (
 //
 // The method is passed a callgraph node instance and the AST node that corresponds to its body.
 type PatchFunc func(cgNode *CallGraphNode, fnDeclNode *ast.BlockStmt) (modifiedAST bool, extraImports []string)
+
+// A patch command groups together a list of targets and a patch function to apply to them.
+type PatchCmd struct {
+	// The slice of targets to hook.
+	Targets []ProfileTarget
+
+	// The patch function to apply to functions matching the target.
+	PatchFn PatchFunc
+}
 
 // Represents the contents of a parsed go file.
 type parsedGoFile struct {
@@ -51,6 +61,10 @@ type GoPackage struct {
 	// A map of FQ function names to their SSA representation. This map
 	// only contains functions that can be used as profile injection points.
 	ssaFuncCandidates map[string]*ssa.Function
+
+	// The GOPATH for loading package dependencies. We intentionally override it
+	// so that the workspace path where this package's sources exist is included first.
+	GOPATH string
 }
 
 // Analyze all go files in pathToPackage as well as any other packages that are
@@ -63,7 +77,12 @@ func NewGoPackage(pathToPackage string) (*GoPackage, error) {
 		return nil, err
 	}
 
-	candidates, err := ssaCandidates(pathToPackage, fqPkgPrefix)
+	adjustedGoPath, err := adjustGoPath(pathToPackage)
+	if err != nil {
+		return nil, err
+	}
+
+	candidates, err := ssaCandidates(pathToPackage, fqPkgPrefix, adjustedGoPath)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +91,7 @@ func NewGoPackage(pathToPackage string) (*GoPackage, error) {
 		pathToPackage:     pathToPackage,
 		PkgPrefix:         fqPkgPrefix,
 		ssaFuncCandidates: candidates,
+		GOPATH:            adjustedGoPath,
 	}, nil
 }
 
@@ -132,25 +152,35 @@ func (pkg *GoPackage) Find(targetList ...string) ([]ProfileTarget, error) {
 //
 // This function will automatically overwrite any files that are modified by the
 // given patch function.
-func (pkg *GoPackage) Patch(targets []ProfileTarget, patchFn PatchFunc) (updatedFiles int, err error) {
-	// Generate list of functions to hook
-	uniqueTargets := uniqueTargetMap(targets)
-
+func (pkg *GoPackage) Patch(vendorPkgRegex []string, patchCmds ...PatchCmd) (updatedFiles int, patchCount int, err error) {
 	// Parse package sources
-	parsedFiles, err := parsePackageSources(pkg.pathToPackage)
+	parsedFiles, err := parsePackageSources(pkg.pathToPackage, vendorPkgRegex)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	visitor := newFuncVisitor(uniqueTargets, patchFn)
+	// Expand the callgraph of hook targets and generate a visitor for each patch cmd
+	visitors := make([]*funcVisitor, len(patchCmds))
+	for cmdIndex, cmd := range patchCmds {
+		visitors[cmdIndex] = newFuncVisitor(uniqueTargetMap(cmd.Targets), cmd.PatchFn)
+	}
+
+	totalPatchCount := 0
+	visitorPatchCount := 0
+	visitorModifiedAST := false
 	for _, parsedFile := range parsedFiles {
-		modifiedAST := visitor.Process(parsedFile)
+		modifiedAST := false
+		for _, visitor := range visitors {
+			visitorModifiedAST, visitorPatchCount = visitor.Process(parsedFile)
+			modifiedAST = visitorModifiedAST || modifiedAST
+			totalPatchCount += visitorPatchCount
+		}
 
 		// If the file was updated write it back to disk
 		if modifiedAST {
 			f, err := os.Create(parsedFile.filePath)
 			if err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 			printer.Fprint(f, parsedFile.fset, parsedFile.astFile)
 			f.Close()
@@ -158,7 +188,7 @@ func (pkg *GoPackage) Patch(targets []ProfileTarget, patchFn PatchFunc) (updated
 		}
 	}
 
-	return updatedFiles, err
+	return updatedFiles, totalPatchCount, err
 }
 
 // For each profile target, discover all reachable functions in its callgraph and
@@ -167,7 +197,7 @@ func (pkg *GoPackage) Patch(targets []ProfileTarget, patchFn PatchFunc) (updated
 func uniqueTargetMap(targets []ProfileTarget) map[string]*CallGraphNode {
 	uniqueTargets := make(map[string]*CallGraphNode, 0)
 	for _, target := range targets {
-		cg := target.CallGraph(IgnoreVendoredDeps)
+		cg := target.CallGraph()
 		for _, cgNode := range cg {
 			uniqueTargets[cgNode.Name] = cgNode
 		}
@@ -178,7 +208,16 @@ func uniqueTargetMap(targets []ProfileTarget) map[string]*CallGraphNode {
 
 // Recursively scan pathToPackage and create an AST for any non-test go files
 // that are found.
-func parsePackageSources(pathToPackage string) ([]*parsedGoFile, error) {
+func parsePackageSources(pathToPackage string, vendorPkgRegex []string) ([]*parsedGoFile, error) {
+	var err error
+	pkgRegexes := make([]*regexp.Regexp, len(vendorPkgRegex))
+	for index, regex := range vendorPkgRegex {
+		pkgRegexes[index], err = regexp.Compile(regex)
+		if err != nil {
+			return nil, fmt.Errorf("GoPackage.Patch: could not compile regex for profile-vendored-pkg arg %q: %s", regex, err)
+		}
+	}
+
 	parsedFiles := make([]*parsedGoFile, 0)
 	buildAST := func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -188,6 +227,21 @@ func parsePackageSources(pathToPackage string) ([]*parsedGoFile, error) {
 		// Skip dirs, non-go and go test files
 		if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
+		}
+
+		// If this is a vendored dependency we should skip it unless it matches one of
+		// the user-defined vendor package regexes
+		if isVendoredDep(path) {
+			keep := false
+			for _, r := range pkgRegexes {
+				if r.MatchString(path) {
+					keep = true
+					break
+				}
+			}
+			if !keep {
+				return nil
+			}
 		}
 
 		fset := token.NewFileSet()
@@ -212,10 +266,37 @@ func parsePackageSources(pathToPackage string) ([]*parsedGoFile, error) {
 	}
 
 	// Parse package files
-	err := filepath.Walk(pathToPackage, buildAST)
+	err = filepath.Walk(pathToPackage, buildAST)
 	if err != nil {
 		return nil, err
 	}
 
 	return parsedFiles, nil
+}
+
+// Check if the given path points to a vendored dependency.
+func isVendoredDep(path string) bool {
+	return strings.Contains(path, "/Godeps/") || strings.Contains(path, "/vendor/")
+}
+
+// In order for go to correctly pick up any patched nested packages
+// instead of the original ones we need to override GOPATH so that
+// the workspace where the copied files reside is included first.
+func adjustGoPath(pathToPackage string) (string, error) {
+	separator := ':'
+	if runtime.GOOS == "windows" {
+		separator = ';'
+	}
+
+	workspaceDir, err := packageWorkspace(pathToPackage)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf(
+		"%s%c%s",
+		workspaceDir,
+		separator,
+		os.Getenv("GOPATH"),
+	), nil
 }

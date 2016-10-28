@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/user"
 
 	"github.com/geckoboard/prism/cmd"
 	"github.com/urfave/cli"
@@ -34,7 +35,7 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "run-cmd",
-					Value: `go run main.go`,
+					Value: `find . -d 1 -type f -name "*.go" ! -name "*_test.go" -print0 | xargs -0 go run`,
 					Usage: "project run command",
 				},
 				cli.StringFlag{
@@ -45,6 +46,16 @@ func main() {
 				cli.BoolFlag{
 					Name:  "preserve-output",
 					Usage: "preserve patched project post build",
+				},
+				cli.StringFlag{
+					Name:  "profile-folder",
+					Usage: "specify the output folder for captured profiles",
+					Value: defaultOutputDir(),
+				},
+				cli.StringSliceFlag{
+					Name:  "profile-vendored-pkg",
+					Usage: "inject profile hooks to any vendored packages matching this regex. If left unspecified, no vendored packages will be hooked",
+					Value: &cli.StringSlice{},
 				},
 			},
 		},
@@ -93,4 +104,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
 		os.Exit(1)
 	}
+}
+
+// Get default output dir for profiles.
+func defaultOutputDir() string {
+	usr, err := user.Current()
+	if err != nil {
+		panic(err)
+	}
+	return usr.HomeDir + "/prism"
 }

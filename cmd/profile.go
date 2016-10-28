@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"syscall"
 
@@ -72,23 +71,33 @@ func ProfileProject(ctx *cli.Context) error {
 		return err
 	}
 
-	// Inject profiler
-	updatedFiles, err := goPackage.Patch(profileTargets, tools.InjectProfiler(tmpAbsProjPath))
+	// Inject profiler hooks and bootstrap code to main()
+	bootstrapTargets := []tools.ProfileTarget{
+		tools.ProfileTarget{
+			QualifiedName: goPackage.PkgPrefix + "/main",
+			PkgPrefix:     goPackage.PkgPrefix,
+		},
+	}
+	updatedFiles, patchCount, err := goPackage.Patch(
+		ctx.StringSlice("profile-vendored-pkg"),
+		tools.PatchCmd{profileTargets, tools.InjectProfiler()},
+		tools.PatchCmd{bootstrapTargets, tools.InjectProfilerBootstrap(ctx.String("profile-folder"))},
+	)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("profile: updated %d files\n", updatedFiles)
+	fmt.Printf("profile: updated %d files and applied %d patches\n", updatedFiles, patchCount)
 
 	// Handle build step if a build command is specified
 	buildCmd := ctx.String("build-cmd")
 	if buildCmd != "" {
-		err = buildProject(tmpDir, tmpAbsProjPath, buildCmd)
+		err = buildProject(goPackage.GOPATH, tmpAbsProjPath, buildCmd)
 		if err != nil {
 			return err
 		}
 	}
 
-	return runProject(tmpDir, tmpAbsProjPath, runCmd)
+	return runProject(goPackage.GOPATH, tmpAbsProjPath, runCmd)
 }
 
 // Clone project and return path to the cloned project.
@@ -141,21 +150,13 @@ func cloneProject(absProjPath, dest string) (tmpDir, tmpAbsProjPath string, err 
 		nil
 }
 
-// Copy envvars for current process and prepend tmpDir into GOPATH.
-func overrideGoPath(tmpDir string) []string {
-	// In order for go to correctly pick up any patched nested packages
-	// instead of the original ones we need to prepend the tmp dir to the
-	// build command's GOPATH envvar.
-	separator := ":"
-	if runtime.GOOS == "windows" {
-		separator = ";"
-	}
-	gopath := "GOPATH=" + tmpDir + separator + os.Getenv("GOPATH")
-
+// Update GOPATH so that the workspace containing the cloned package is included
+// first. This ensures that go will pick up subpackages from the cloned folder.
+func overrideGoPath(adjustedGoPath string) []string {
 	env := os.Environ()
 	for index, envVar := range env {
 		if strings.HasPrefix(envVar, "GOPATH=") {
-			env[index] = gopath
+			env[index] = "GOPATH=" + adjustedGoPath
 			break
 		}
 	}
@@ -164,7 +165,7 @@ func overrideGoPath(tmpDir string) []string {
 }
 
 // Build patched project copy.
-func buildProject(tmpDir, tmpAbsProjPath, buildCmd string) error {
+func buildProject(adjustedGoPath, tmpAbsProjPath, buildCmd string) error {
 	fmt.Printf("profile: building project (%s)\n", buildCmd)
 
 	// Setup buffered output writers
@@ -180,7 +181,7 @@ func buildProject(tmpDir, tmpAbsProjPath, buildCmd string) error {
 		execCmd = exec.Command(tokens[0])
 	}
 	execCmd.Dir = tmpAbsProjPath
-	execCmd.Env = overrideGoPath(tmpDir)
+	execCmd.Env = overrideGoPath(adjustedGoPath)
 	execCmd.Stdin = os.Stdin
 	execCmd.Stdout = stdout
 	execCmd.Stderr = stderr
@@ -198,7 +199,7 @@ func buildProject(tmpDir, tmpAbsProjPath, buildCmd string) error {
 }
 
 // Run patched project to collect profiler data.
-func runProject(tmpDir, tmpAbsProjPath, runCmd string) error {
+func runProject(adjustedGoPath, tmpAbsProjPath, runCmd string) error {
 	fmt.Printf("profile: running patched project (%s)\n", runCmd)
 
 	// Setup buffered output writers
@@ -214,7 +215,7 @@ func runProject(tmpDir, tmpAbsProjPath, runCmd string) error {
 		execCmd = exec.Command(tokens[0])
 	}
 	execCmd.Dir = tmpAbsProjPath
-	execCmd.Env = overrideGoPath(tmpDir)
+	execCmd.Env = overrideGoPath(adjustedGoPath)
 	execCmd.Stdin = os.Stdin
 	execCmd.Stdout = stdout
 	execCmd.Stderr = stderr

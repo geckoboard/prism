@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"go/build"
 	"path/filepath"
 	"strings"
 
@@ -20,7 +21,7 @@ import (
 // package name.
 //
 // The function maps valid entries to their fully qualified names and returns them as a map.
-func ssaCandidates(pathToPackage, fqPkgPrefix string) (map[string]*ssa.Function, error) {
+func ssaCandidates(pathToPackage, fqPkgPrefix, goPath string) (map[string]*ssa.Function, error) {
 	// Fetch all package-wide go files and pass them to a loader
 	goFiles, err := filepath.Glob(fmt.Sprintf("%s*.go", pathToPackage))
 	if err != nil {
@@ -29,6 +30,9 @@ func ssaCandidates(pathToPackage, fqPkgPrefix string) (map[string]*ssa.Function,
 
 	var conf loader.Config
 	conf.CreateFromFilenames(fqPkgPrefix, goFiles...)
+	conf.Build = &build.Default
+	conf.Build.GOPATH = goPath
+	conf.Cwd = pathToPackage
 	loadedProg, err := conf.Load()
 	if err != nil {
 		return nil, err
@@ -77,4 +81,15 @@ func qualifiedPkgName(pathToPackage string) (string, error) {
 
 	skipLen := strings.Index(absPackageDir, "/src/") + 5
 	return absPackageDir[skipLen:], nil
+}
+
+// Get the go workspace location from an absolute package path.
+func packageWorkspace(pathToPackage string) (string, error) {
+	absPackageDir, err := filepath.Abs(filepath.Dir(pathToPackage))
+	if err != nil {
+		return "", err
+	}
+
+	skipLen := strings.Index(absPackageDir, "/src/")
+	return absPackageDir[:skipLen], nil
 }

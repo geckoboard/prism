@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	shipChanBufSize = 100
+	defaultSinkBufferSize = 100
 )
 
 var (
@@ -22,14 +22,11 @@ var (
 	// We maintain a set of active profiles grouped by goroutine id.
 	activeProfiles map[uint64]*Entry
 
-	// A buffered channel for shiping profiles
-	shipChan chan *Entry
-
-	// A channel for receiving start/term signals from shippers.
-	shipSigChan chan struct{}
+	// A sink for emitted profile entries.
+	outputSink Sink
 )
 
-// Load json profile from disk.
+// Load profile from disk.
 func LoadProfile(file string) (*Entry, error) {
 	if !strings.HasSuffix(file, ".json") {
 		return nil, fmt.Errorf(
@@ -56,25 +53,26 @@ func LoadProfile(file string) (*Entry, error) {
 }
 
 // Initialize profiler. This method must be called before invoking any other method from this package.
-func Init() {
-	activeProfiles = make(map[uint64]*Entry, 0)
-	shipChan = make(chan *Entry, shipChanBufSize)
-	shipSigChan = make(chan struct{}, 0)
+func Init(sink Sink) {
+	err := sink.Open(defaultSinkBufferSize)
+	if err != nil {
+		err = fmt.Errorf("profiler: error initializing sink: %s", err)
+		panic(err)
+	}
 
-	// run default shipper and wait for it to start
-	go jsonProfileShipper()
-	<-shipSigChan
+	outputSink = sink
+	activeProfiles = make(map[uint64]*Entry, 0)
 }
 
 // Wait for shippers to fully dequeue any buffered profiles and shut them down.
 // This method should be called by main() before the program exits to ensure
 // that no profile data is lost if the program executes too fast.
 func Shutdown() {
-	// Close shipChan and wait for shipper to exit
-	close(shipChan)
-	<-shipSigChan
-
-	close(shipSigChan)
+	err := outputSink.Close()
+	if err != nil {
+		err = fmt.Errorf("profiler: error shutting downg sink: %s", err)
+		panic(err)
+	}
 }
 
 // Create a new profile.
@@ -109,7 +107,7 @@ func EndProfile() {
 	// Update profile stats and ship it
 	profile.updateStats(time.Since(tick))
 	profile.subtractOverhead()
-	shipChan <- profile
+	outputSink.Input() <- profile
 }
 
 // Enter a scope inside the currently active profile.
