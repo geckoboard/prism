@@ -22,7 +22,7 @@ var (
 	errNoProfileTargets     = errors.New("no profile targets specified")
 	errMissingRunCmd        = errors.New("run-cmd not specified")
 
-	tokenizeRegex = regexp.MustCompile("'.+'|\".+\"|\\S+")
+	tokenizeRegex = regexp.MustCompile("'.+?'|\".+?\"|\\S+")
 )
 
 func ProfileProject(ctx *cli.Context) error {

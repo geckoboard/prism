@@ -35,7 +35,7 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "run-cmd",
-					Value: `find . -d 1 -type f -name "*.go" ! -name "*_test.go" -print0 | xargs -0 go run`,
+					Value: `find . -d 1 -type f -name *\.go ! -name *_test\.go -exec go run {} +`,
 					Usage: "project run command",
 				},
 				cli.StringFlag{
