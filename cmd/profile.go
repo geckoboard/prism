@@ -31,7 +31,7 @@ func ProfileProject(ctx *cli.Context) error {
 		return errMissingPathToProject
 	}
 
-	profileFuncs := ctx.StringSlice("target")
+	profileFuncs := ctx.StringSlice("profile-target")
 	if len(profileFuncs) == 0 {
 		return errNoProfileTargets
 	}
@@ -81,7 +81,7 @@ func ProfileProject(ctx *cli.Context) error {
 	updatedFiles, patchCount, err := goPackage.Patch(
 		ctx.StringSlice("profile-vendored-pkg"),
 		tools.PatchCmd{profileTargets, tools.InjectProfiler()},
-		tools.PatchCmd{bootstrapTargets, tools.InjectProfilerBootstrap(ctx.String("profile-folder"))},
+		tools.PatchCmd{bootstrapTargets, tools.InjectProfilerBootstrap(ctx.String("profile-folder"), ctx.String("profile-label"))},
 	)
 	if err != nil {
 		return err

@@ -59,7 +59,11 @@ func tabularizeProfile(profile *profiler.Entry, tableCols []tableColumnType, thr
 	t.SetPadding(1)
 
 	// Setup headers and alignment settings
-	t.SetHeader(0, "call stack", table.AlignLeft)
+	if profile.Label != "" {
+		t.SetHeader(0, fmt.Sprintf("%s - call stack", profile.Label), table.AlignLeft)
+	} else {
+		t.SetHeader(0, "call stack", table.AlignLeft)
+	}
 	for dIndex, dType := range tableCols {
 		t.SetHeader(dIndex+1, dType.Header(), table.AlignRight)
 	}

@@ -19,6 +19,9 @@ var (
 	// A mutex for protecting access to the activeProfiles map.
 	profileMutex sync.Mutex
 
+	// A label to be applied to generated profiles.
+	profileLabel string
+
 	// We maintain a set of active profiles grouped by goroutine id.
 	activeProfiles map[uint64]*Entry
 
@@ -53,7 +56,7 @@ func LoadProfile(file string) (*Entry, error) {
 }
 
 // Initialize profiler. This method must be called before invoking any other method from this package.
-func Init(sink Sink) {
+func Init(sink Sink, capturedProfileLabel string) {
 	err := sink.Open(defaultSinkBufferSize)
 	if err != nil {
 		err = fmt.Errorf("profiler: error initializing sink: %s", err)
@@ -62,6 +65,7 @@ func Init(sink Sink) {
 
 	outputSink = sink
 	activeProfiles = make(map[uint64]*Entry, 0)
+	profileLabel = capturedProfileLabel
 }
 
 // Wait for shippers to fully dequeue any buffered profiles and shut them down.
@@ -84,6 +88,7 @@ func BeginProfile(name string) {
 
 	tid := threadId()
 	pe := makeEntry(name, 0)
+	pe.Label = profileLabel
 	activeProfiles[tid] = pe
 	pe.ThreadId = tid
 	pe.EnteredAt = time.Now()

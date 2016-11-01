@@ -23,11 +23,6 @@ func main() {
 
 			Action: cmd.ProfileProject,
 			Flags: []cli.Flag{
-				cli.StringSliceFlag{
-					Name:  "target, t",
-					Value: &cli.StringSlice{},
-					Usage: "fully qualified function name to profile",
-				},
 				cli.StringFlag{
 					Name:  "build-cmd",
 					Value: "",
@@ -47,10 +42,19 @@ func main() {
 					Name:  "preserve-output",
 					Usage: "preserve patched project post build",
 				},
+				cli.StringSliceFlag{
+					Name:  "profile-target, t",
+					Value: &cli.StringSlice{},
+					Usage: "fully qualified function name to profile",
+				},
 				cli.StringFlag{
 					Name:  "profile-folder",
 					Usage: "specify the output folder for captured profiles",
 					Value: defaultOutputDir(),
+				},
+				cli.StringFlag{
+					Name:  "profile-label",
+					Usage: `specify a label to be attached to captured profiles and displayed when using the "print" or "diff" commands`,
 				},
 				cli.StringSliceFlag{
 					Name:  "profile-vendored-pkg",
