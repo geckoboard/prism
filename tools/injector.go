@@ -12,7 +12,7 @@ var (
 )
 
 // Return a PatchFunc that injects our profiler init code the main function of the target package.
-func InjectProfilerBootstrap(profileDir string) PatchFunc {
+func InjectProfilerBootstrap(profileDir, profileLabel string) PatchFunc {
 	return func(cgNode *CallGraphNode, fnDeclNode *ast.BlockStmt) (modifiedAST bool, extraImports []string) {
 		imports := append(profilerImports, sinkImports...)
 		fnDeclNode.List = append(
@@ -21,7 +21,7 @@ func InjectProfilerBootstrap(profileDir string) PatchFunc {
 					&ast.BasicLit{
 						token.NoPos,
 						token.STRING,
-						fmt.Sprintf("prismProfiler.Init(prismSink.NewFileSink(%q))", profileDir),
+						fmt.Sprintf("prismProfiler.Init(prismSink.NewFileSink(%q), %q)", profileDir, profileLabel),
 					},
 				},
 				&ast.ExprStmt{

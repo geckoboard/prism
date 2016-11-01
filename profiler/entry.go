@@ -10,6 +10,7 @@ import (
 type Entry struct {
 	ThreadId uint64
 
+	Label string `json:"label"`
 	Name  string `json:"name"`
 	Depth int    `json:"depth"`
 

@@ -109,14 +109,24 @@ func tabularizeDiff(profiles []*profiler.Entry, entryGroupsByName correlatedEntr
 	t.AddHeaderGroup(1, "", table.AlignLeft)
 
 	startOffset := 1
-	for index, _ := range profiles {
+	for index, profile := range profiles {
 		baseIndex := startOffset + index*len(diffCols)
 		var groupTitle string
-		switch index {
-		case 0:
-			groupTitle = "baseline"
+		switch profile.Label {
+		case "":
+			switch index {
+			case 0:
+				groupTitle = "baseline"
+			default:
+				groupTitle = fmt.Sprintf("profile %d", index)
+			}
 		default:
-			groupTitle = fmt.Sprintf("profile %d", index)
+			switch index {
+			case 0:
+				groupTitle = fmt.Sprintf("%s - baseline", profile.Label)
+			default:
+				groupTitle = profile.Label
+			}
 		}
 		t.AddHeaderGroup(len(diffCols), groupTitle, table.AlignLeft)
 
