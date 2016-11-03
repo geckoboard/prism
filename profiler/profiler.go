@@ -169,7 +169,7 @@ func Leave() {
 	}
 
 	if pe.Parent == nil {
-		panic(fmt.Sprintf("profiler: [BUG] attempted to exit an active profile (tid %s)", tid))
+		panic(fmt.Sprintf("profiler: [BUG] attempted to exit an active profile (tid %d)", tid))
 	}
 
 	// Pop parent

@@ -80,8 +80,8 @@ func ProfileProject(ctx *cli.Context) error {
 	}
 	updatedFiles, patchCount, err := goPackage.Patch(
 		ctx.StringSlice("profile-vendored-pkg"),
-		tools.PatchCmd{profileTargets, tools.InjectProfiler()},
-		tools.PatchCmd{bootstrapTargets, tools.InjectProfilerBootstrap(ctx.String("profile-folder"), ctx.String("profile-label"))},
+		tools.PatchCmd{Targets: profileTargets, PatchFn: tools.InjectProfiler()},
+		tools.PatchCmd{Targets: bootstrapTargets, PatchFn: tools.InjectProfilerBootstrap(ctx.String("profile-folder"), ctx.String("profile-label"))},
 	)
 	if err != nil {
 		return err

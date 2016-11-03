@@ -18,17 +18,17 @@ func InjectProfilerBootstrap(profileDir, profileLabel string) PatchFunc {
 		fnDeclNode.List = append(
 			[]ast.Stmt{
 				&ast.ExprStmt{
-					&ast.BasicLit{
-						token.NoPos,
-						token.STRING,
-						fmt.Sprintf("prismProfiler.Init(prismSink.NewFileSink(%q), %q)", profileDir, profileLabel),
+					X: &ast.BasicLit{
+						ValuePos: token.NoPos,
+						Kind:     token.STRING,
+						Value:    fmt.Sprintf("prismProfiler.Init(prismSink.NewFileSink(%q), %q)", profileDir, profileLabel),
 					},
 				},
 				&ast.ExprStmt{
-					&ast.BasicLit{
-						token.NoPos,
-						token.STRING,
-						`defer prismProfiler.Shutdown()`,
+					X: &ast.BasicLit{
+						ValuePos: token.NoPos,
+						Kind:     token.STRING,
+						Value:    `defer prismProfiler.Shutdown()`,
 					},
 				},
 			},
@@ -43,23 +43,23 @@ func InjectProfilerBootstrap(profileDir, profileLabel string) PatchFunc {
 // functions that are reachable from the profile targets that the user specified.
 func InjectProfiler() PatchFunc {
 	return func(cgNode *CallGraphNode, fnDeclNode *ast.BlockStmt) (modifiedAST bool, extraImports []string) {
-		enterFn, leaveFn := profileMethods(cgNode.Depth)
+		enterFn, leaveFn := profileFnName(cgNode.Depth)
 
 		// Append our instrumentation calls to the top of the function
 		fnDeclNode.List = append(
 			[]ast.Stmt{
 				&ast.ExprStmt{
-					&ast.BasicLit{
-						token.NoPos,
-						token.STRING,
-						fmt.Sprintf(`prismProfiler.%s("%s")`, enterFn, cgNode.Name),
+					X: &ast.BasicLit{
+						ValuePos: token.NoPos,
+						Kind:     token.STRING,
+						Value:    fmt.Sprintf(`prismProfiler.%s("%s")`, enterFn, cgNode.Name),
 					},
 				},
 				&ast.ExprStmt{
-					&ast.BasicLit{
-						token.NoPos,
-						token.STRING,
-						fmt.Sprintf(`defer prismProfiler.%s()`, leaveFn),
+					X: &ast.BasicLit{
+						ValuePos: token.NoPos,
+						Kind:     token.STRING,
+						Value:    fmt.Sprintf(`defer prismProfiler.%s()`, leaveFn),
 					},
 				},
 			},
@@ -73,7 +73,7 @@ func InjectProfiler() PatchFunc {
 // Return the appropriate profiler enter/exit function names depending on whether
 // a profile target is a user-specified target (depth=0) or a target discovered
 // by analyzing the callgraph from a user-specified target.
-func profileMethods(depth int) (enterFn, leaveFn string) {
+func profileFnName(depth int) (enterFn, leaveFn string) {
 	if depth == 0 {
 		return "BeginProfile", "EndProfile"
 	}
