@@ -106,7 +106,7 @@ func outputFile(outputDir string, pe *profiler.Entry, extension string) string {
 			profilePrefix,
 			badCharRegex.ReplaceAllString(pe.Name, "_"),
 			pe.EnteredAt.UnixNano(),
-			pe.ThreadId,
+			pe.ThreadID,
 			extension,
 		),
 	)

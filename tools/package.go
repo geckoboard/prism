@@ -122,7 +122,7 @@ func NewGoPackage(pathToPackage string) (*GoPackage, error) {
 //  github.com/geckoboard/foo/Foo.DoStuff
 func (pkg *GoPackage) Find(targetList ...string) ([]ProfileTarget, error) {
 	profileTargets := make([]ProfileTarget, len(targetList))
-	var entrypointSSA *ssa.Function = nil
+	var entrypointSSA *ssa.Function
 	for targetIndex, target := range targetList {
 		entrypointSSA = nil
 		for candidate, ssaFn := range pkg.ssaFuncCandidates {

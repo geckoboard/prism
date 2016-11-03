@@ -18,7 +18,7 @@ type paddedWriter struct {
 // Wrap a io.Writer with a writer that prepends pad to the beginning of each line.
 // An optional color argument containing an ANSI escape code may be specified to
 // colorize output for color terminals.
-func NewPaddedWriter(w io.Writer, pad, color string) *paddedWriter {
+func newPaddedWriter(w io.Writer, pad, color string) *paddedWriter {
 	pw := &paddedWriter{
 		w:         w,
 		buf:       new(bytes.Buffer),

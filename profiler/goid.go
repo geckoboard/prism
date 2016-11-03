@@ -22,7 +22,7 @@ var stackBufPool = sync.Pool{
 }
 
 // Detect the current goroutine id.
-func threadId() uint64 {
+func threadID() uint64 {
 	bp := stackBufPool.Get().(*[]byte)
 	defer stackBufPool.Put(bp)
 	b := *bp

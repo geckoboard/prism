@@ -20,7 +20,7 @@ func TestQualifiedCodeName(t *testing.T) {
 	}
 
 	for specIndex, spec := range specs {
-		var fnDecl *ast.FuncDecl = nil
+		var fnDecl *ast.FuncDecl
 		for _, decl := range parsedFile.astFile.Decls {
 			if d, isFnDecl := decl.(*ast.FuncDecl); isFnDecl {
 				if d.Name.Name == spec.FnName {

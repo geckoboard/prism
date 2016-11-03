@@ -86,11 +86,11 @@ func BeginProfile(name string) {
 	profileMutex.Lock()
 	defer profileMutex.Unlock()
 
-	tid := threadId()
+	tid := threadID()
 	pe := makeEntry(name, 0)
 	pe.Label = profileLabel
 	activeProfiles[tid] = pe
-	pe.ThreadId = tid
+	pe.ThreadID = tid
 	pe.EnteredAt = time.Now()
 	pe.TotalProfileOverhead += time.Since(tick)
 }
@@ -100,7 +100,7 @@ func EndProfile() {
 	tick := time.Now()
 
 	profileMutex.Lock()
-	tid := threadId()
+	tid := threadID()
 	profile, valid := activeProfiles[tid]
 	delete(activeProfiles, tid)
 	profileMutex.Unlock()
@@ -122,7 +122,7 @@ func Enter(name string) {
 	profileMutex.Lock()
 	defer profileMutex.Unlock()
 
-	tid := threadId()
+	tid := threadID()
 
 	profile, valid := activeProfiles[tid]
 	if !valid {
@@ -130,7 +130,7 @@ func Enter(name string) {
 		return
 	}
 
-	var pe *Entry = nil
+	var pe *Entry
 
 	// Scan nested scopes from end to start looking for an existing match
 	index := len(profile.Children) - 1
@@ -161,7 +161,7 @@ func Leave() {
 	profileMutex.Lock()
 	defer profileMutex.Unlock()
 
-	tid := threadId()
+	tid := threadID()
 	pe, valid := activeProfiles[tid]
 	if !valid {
 		// Invoked through another call path that we do not monitor

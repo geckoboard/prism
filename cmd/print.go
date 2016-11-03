@@ -18,6 +18,7 @@ var (
 	errNoPrintColumnsSpecified = errors.New("no table columns specified for printing profile")
 )
 
+// PrintProfile displays a captured profile in tabular form.
 func PrintProfile(ctx *cli.Context) error {
 	var err error
 

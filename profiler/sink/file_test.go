@@ -32,6 +32,8 @@ func TestFileSink(t *testing.T) {
 	for i := 0; i < numEntries; i++ {
 		go func(i int) {
 			defer wg.Done()
+			// This gets incorrectly flagged as a data-race but
+			// in reality no race exists as we are sending data to the channel
 			s.Input() <- &profiler.Entry{
 				Name: fmt.Sprintf(`foo.bar/baz\boo.%d`, i),
 			}

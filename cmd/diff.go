@@ -26,7 +26,7 @@ var (
 type idToEntryMap map[int]*profiler.Entry
 type correlatedEntriesMap map[string]idToEntryMap
 
-// Pretty print a n-way diff between two or more profiles.
+// DiffProfiles pretty prints a n-way diff between two or more profiles.
 func DiffProfiles(ctx *cli.Context) error {
 	var err error
 
@@ -72,8 +72,8 @@ func DiffProfiles(ctx *cli.Context) error {
 func correlateEntries(profiles []*profiler.Entry) correlatedEntriesMap {
 	// Traverse profile trees and group all entries by name
 	entryGroupsByName := make(correlatedEntriesMap, 0)
-	for profileId, profile := range profiles {
-		populateEntryGroups(profileId, profile, entryGroupsByName)
+	for profileID, profile := range profiles {
+		populateEntryGroups(profileID, profile, entryGroupsByName)
 	}
 
 	return entryGroupsByName
@@ -81,20 +81,20 @@ func correlateEntries(profiles []*profiler.Entry) correlatedEntriesMap {
 
 // Traverse profile entries and group them together with other profile entries
 // that share the same entry name.
-func populateEntryGroups(profileId int, pe *profiler.Entry, entryGroupsByName correlatedEntriesMap) {
+func populateEntryGroups(profileID int, pe *profiler.Entry, entryGroupsByName correlatedEntriesMap) {
 	if list, exists := entryGroupsByName[pe.Name]; exists {
 		// We are working on a copy of the map struct so we need to
 		// update its parent with the updated list contents
-		list[profileId] = pe
+		list[profileID] = pe
 		entryGroupsByName[pe.Name] = list
 	} else {
 		entryGroupsByName[pe.Name] = idToEntryMap{
-			profileId: pe,
+			profileID: pe,
 		}
 	}
 
 	for _, child := range pe.Children {
-		populateEntryGroups(profileId, child, entryGroupsByName)
+		populateEntryGroups(profileID, child, entryGroupsByName)
 	}
 }
 
@@ -157,14 +157,14 @@ func populateDiffRows(pe *profiler.Entry, numProfiles int, entryGroupsByName cor
 	baseLine := entryGroupsByName[pe.Name][0]
 
 	// Populate measurement columns
-	for profileId, entry := range entryGroupsByName[pe.Name] {
+	for profileID, entry := range entryGroupsByName[pe.Name] {
 		totalTime := float64(entry.TotalTime.Nanoseconds()) / 1.0e6
 		avgTime := float64(entry.TotalTime.Nanoseconds()) / float64(entry.Invocations*1e6)
 		minTime := float64(entry.MinTime.Nanoseconds()) / 1.0e6
 		maxTime := float64(entry.MaxTime.Nanoseconds()) / 1.0e6
 
-		baseIndex := profileId*len(diffCols) + 1
-		if baseLine != nil && profileId != 0 {
+		baseIndex := profileID*len(diffCols) + 1
+		if baseLine != nil && profileID != 0 {
 
 			baseTotalTime := float64(baseLine.TotalTime.Nanoseconds()) / 1.0e6
 			baseAvgTime := float64(baseLine.TotalTime.Nanoseconds()) / float64(baseLine.Invocations*1e6)
@@ -221,7 +221,7 @@ func fmtDiff(baseLine, candidate float64, threshold float64) string {
 		return fmt.Sprintf("%1.2f (--)", candidate)
 	}
 
-	var speedup float64 = 0.0
+	var speedup float64
 	if candidate != 0 {
 		speedup = baseLine / candidate
 	}

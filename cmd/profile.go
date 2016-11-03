@@ -25,6 +25,8 @@ var (
 	tokenizeRegex = regexp.MustCompile("'.+?'|\".+?\"|\\S+")
 )
 
+// ProfileProject clones a go package, injects profile hooks, builds and runs
+// the project to collect profiling information.
 func ProfileProject(ctx *cli.Context) error {
 	args := ctx.Args()
 	if len(args) != 1 {
@@ -169,8 +171,8 @@ func buildProject(adjustedGoPath, tmpAbsProjPath, buildCmd string) error {
 	fmt.Printf("profile: building project (%s)\n", buildCmd)
 
 	// Setup buffered output writers
-	stdout := NewPaddedWriter(os.Stdout, "profile: [build] > ", "\033[32m")
-	stderr := NewPaddedWriter(os.Stderr, "profile: [build] > ", "\033[32m")
+	stdout := newPaddedWriter(os.Stdout, "profile: [build] > ", "\033[32m")
+	stderr := newPaddedWriter(os.Stderr, "profile: [build] > ", "\033[32m")
 
 	// Setup the build command and set up its cwd and env overrides
 	var execCmd *exec.Cmd
@@ -203,8 +205,8 @@ func runProject(adjustedGoPath, tmpAbsProjPath, runCmd string) error {
 	fmt.Printf("profile: running patched project (%s)\n", runCmd)
 
 	// Setup buffered output writers
-	stdout := NewPaddedWriter(os.Stdout, "profile: [run] > ", "\033[32m")
-	stderr := NewPaddedWriter(os.Stderr, "profile: [run] > ", "\033[32m")
+	stdout := newPaddedWriter(os.Stdout, "profile: [run] > ", "\033[32m")
+	stderr := newPaddedWriter(os.Stderr, "profile: [run] > ", "\033[32m")
 
 	// Setup the run command and set up its cwd and env overrides
 	var execCmd *exec.Cmd
