@@ -54,7 +54,7 @@ func parseTableColumList(list string) ([]tableColumnType, error) {
 		case "invocations":
 			col = tableColInvocations
 		default:
-			return nil, fmt.Errorf("unsupported column name '%s'; supported column names are: total, avg, min, max, invocations", colName)
+			return nil, fmt.Errorf("unsupported column name %q; supported column names are: total, avg, min, max, invocations", colName)
 		}
 		cols = append(cols, col)
 	}
