@@ -37,7 +37,7 @@ func PrintProfile(ctx *cli.Context) error {
 
 	threshold := ctx.Float64("threshold")
 
-	profile, err := profiler.LoadProfile(args[0])
+	profile, err := loadProfile(args[0])
 	if err != nil {
 		return err
 	}

@@ -47,7 +47,7 @@ func DiffProfiles(ctx *cli.Context) error {
 
 	profiles := make([]*profiler.Entry, len(args))
 	for index, arg := range args {
-		profiles[index], err = profiler.LoadProfile(arg)
+		profiles[index], err = loadProfile(arg)
 		if err != nil {
 			return err
 		}

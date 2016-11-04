@@ -1,12 +1,7 @@
 package profiler
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -28,32 +23,6 @@ var (
 	// A sink for emitted profile entries.
 	outputSink Sink
 )
-
-// LoadProfile reads a profile from disk.
-func LoadProfile(file string) (*Entry, error) {
-	if !strings.HasSuffix(file, ".json") {
-		return nil, fmt.Errorf(
-			"unrecognized profile extension %s for %s; only json profiles are currently supported",
-			filepath.Ext(file),
-			file,
-		)
-	}
-
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	data, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
-	var pe *Entry
-	err = json.Unmarshal(data, &pe)
-	return pe, err
-}
 
 // Init handles the initialization of the prism profiler. This method must be
 // called before invoking any other method from this package.
@@ -111,8 +80,8 @@ func EndProfile() {
 	}
 
 	// Update profile stats and ship it
-	profile.updateStats(time.Since(tick))
 	profile.subtractOverhead()
+	profile.updateStats(time.Since(tick))
 	outputSink.Input() <- profile
 }
 

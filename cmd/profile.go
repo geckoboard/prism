@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/geckoboard/prism/profiler"
 	"github.com/geckoboard/prism/tools"
 	"github.com/urfave/cli"
 )
@@ -257,4 +259,30 @@ func deleteClonedProject(path string) {
 // behaves similar to strings.Fields but also preseves quoted sections.
 func tokenizeArgs(args string) []string {
 	return tokenizeRegex.FindAllString(args, -1)
+}
+
+// loadProfile reads a profile from disk.
+func loadProfile(file string) (*profiler.Entry, error) {
+	if !strings.HasSuffix(file, ".json") {
+		return nil, fmt.Errorf(
+			"unrecognized profile extension %s for %s; only json profiles are currently supported",
+			filepath.Ext(file),
+			file,
+		)
+	}
+
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
+	var pe *profiler.Entry
+	err = json.Unmarshal(data, &pe)
+	return pe, err
 }
