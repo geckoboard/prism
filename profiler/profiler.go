@@ -29,7 +29,7 @@ var (
 	outputSink Sink
 )
 
-// Load profile from disk.
+// LoadProfile reads a profile from disk.
 func LoadProfile(file string) (*Entry, error) {
 	if !strings.HasSuffix(file, ".json") {
 		return nil, fmt.Errorf(
@@ -55,7 +55,8 @@ func LoadProfile(file string) (*Entry, error) {
 	return pe, err
 }
 
-// Initialize profiler. This method must be called before invoking any other method from this package.
+// Init handles the initialization of the prism profiler. This method must be
+// called before invoking any other method from this package.
 func Init(sink Sink, capturedProfileLabel string) {
 	err := sink.Open(defaultSinkBufferSize)
 	if err != nil {
@@ -68,9 +69,9 @@ func Init(sink Sink, capturedProfileLabel string) {
 	profileLabel = capturedProfileLabel
 }
 
-// Wait for shippers to fully dequeue any buffered profiles and shut them down.
-// This method should be called by main() before the program exits to ensure
-// that no profile data is lost if the program executes too fast.
+// Shutdown waits for shippers to fully dequeue any buffered profiles and shuts
+// them down. This method should be called by main() before the program exits
+// to ensure that no profile data is lost if the program executes too fast.
 func Shutdown() {
 	err := outputSink.Close()
 	if err != nil {
@@ -79,7 +80,7 @@ func Shutdown() {
 	}
 }
 
-// Create a new profile.
+// BeginProfile creates a new profile.
 func BeginProfile(name string) {
 	tick := time.Now()
 
@@ -95,7 +96,7 @@ func BeginProfile(name string) {
 	pe.TotalProfileOverhead += time.Since(tick)
 }
 
-// End an active profile.
+// EndProfile finalizes and ships a currently active profile.
 func EndProfile() {
 	tick := time.Now()
 
@@ -115,7 +116,7 @@ func EndProfile() {
 	outputSink.Input() <- profile
 }
 
-// Enter a scope inside the currently active profile.
+// Enter appends a new scope inside the currently active profile.
 func Enter(name string) {
 	tick := time.Now()
 
@@ -154,7 +155,7 @@ func Enter(name string) {
 	pe.TotalProfileOverhead += time.Since(tick)
 }
 
-// Exit a scope inside the currently active profile.
+// Leave exits the inner-most scope inside the currently active profile.
 func Leave() {
 	tick := time.Now()
 

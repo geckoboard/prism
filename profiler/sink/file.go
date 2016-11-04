@@ -21,8 +21,8 @@ type fileSink struct {
 	inputChan chan *profiler.Entry
 }
 
-// Create a new profile entry sink which stores profiles to disk at the folder
-// specified by outputDir.
+// NewFileSink creates a new profile entry sink instance which stores profiles
+// to disk at the folder specified by outputDir.
 func NewFileSink(outputDir string) profiler.Sink {
 	return &fileSink{
 		outputDir: outputDir,

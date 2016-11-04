@@ -80,7 +80,7 @@ func (pe *Entry) subtractOverhead() {
 	pe.TotalTime -= childOverhead
 }
 
-// Recursively free profile entries.
+// Free recursively frees all profile entries nested under this entry.
 func (pe *Entry) Free() {
 	// Free children first
 	for _, child := range pe.Children {

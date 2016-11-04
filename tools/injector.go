@@ -11,7 +11,7 @@ var (
 	sinkImports     = []string{"prismSink github.com/geckoboard/prism/profiler/sink"}
 )
 
-// Return a PatchFunc that injects our profiler init code the main function of the target package.
+// InjectProfilerBootstrap returns a PatchFunc that injects our profiler init code the main function of the target package.
 func InjectProfilerBootstrap(profileDir, profileLabel string) PatchFunc {
 	return func(cgNode *CallGraphNode, fnDeclNode *ast.BlockStmt) (modifiedAST bool, extraImports []string) {
 		imports := append(profilerImports, sinkImports...)
@@ -39,7 +39,7 @@ func InjectProfilerBootstrap(profileDir, profileLabel string) PatchFunc {
 	}
 }
 
-// Return a PatchFunc that injects our profiler instrumentation code in all
+// InjectProfiler returns a PatchFunc that injects our profiler instrumentation code in all
 // functions that are reachable from the profile targets that the user specified.
 func InjectProfiler() PatchFunc {
 	return func(cgNode *CallGraphNode, fnDeclNode *ast.BlockStmt) (modifiedAST bool, extraImports []string) {

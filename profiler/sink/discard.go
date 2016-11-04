@@ -8,7 +8,8 @@ type discardSink struct {
 	numDiscarded int
 }
 
-// Create a new profile entry sink which discards incoming profile entries.
+// NewDiscardSink creates a profile entry sink instance which discards all
+// incoming profile entries.
 func NewDiscardSink() profiler.Sink {
 	return &discardSink{
 		sigChan: make(chan struct{}, 0),
