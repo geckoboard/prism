@@ -130,10 +130,14 @@ func TestDiffWithoutProfileLabel(t *testing.T) {
 	}
 	os.Stdout = pWrite
 
+	// Restore stdout incase of a panic
+	defer func() {
+		os.Stdout = stdOut
+	}()
+
 	// Run diff and capture output
 	err = DiffProfiles(ctx)
 	if err != nil {
-		os.Stdout = stdOut
 		t.Fatal(err)
 	}
 

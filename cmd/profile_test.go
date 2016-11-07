@@ -42,11 +42,15 @@ func TestProfile(t *testing.T) {
 	os.Stdout = pWrite
 	os.Stderr = pWrite
 
+	// Restore stdout/err incase of a panic
+	defer func() {
+		os.Stdout = stdOut
+		os.Stderr = stdErr
+	}()
+
 	// Profile package and capture output
 	err = ProfileProject(ctx)
 	if err != nil {
-		os.Stdout = stdOut
-		os.Stderr = stdErr
 		t.Fatal(err)
 	}
 
