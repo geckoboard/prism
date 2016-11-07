@@ -19,7 +19,7 @@ var (
 	stripCharRegex = regexp.MustCompile(`[()*]`)
 )
 
-// A function used to modify the AST for a go function matching a profile target. The
+// PatchFunc is a function used to modify the AST for a go function matching a profile target. The
 // function should return a flag to indicate whether the AST of the function was modified
 // and a list of additional package imports to be injected into the file where the target
 // is defined.
@@ -27,7 +27,7 @@ var (
 // The method is passed a callgraph node instance and the AST node that corresponds to its body.
 type PatchFunc func(cgNode *CallGraphNode, fnDeclNode *ast.BlockStmt) (modifiedAST bool, extraImports []string)
 
-// A patch command groups together a list of targets and a patch function to apply to them.
+// PatchCmd groups together a list of targets and a patch function to apply to them.
 type PatchCmd struct {
 	// The slice of targets to hook.
 	Targets []ProfileTarget
@@ -49,8 +49,8 @@ type parsedGoFile struct {
 	astFile *ast.File
 }
 
-// The output of an SSA analysis performed on a package and any packages it
-// references.
+// GoPackage contains the SSA analysis output performed on a package and all
+// packages it imports.
 type GoPackage struct {
 	// The path to the project.
 	pathToPackage string
@@ -67,8 +67,8 @@ type GoPackage struct {
 	GOPATH string
 }
 
-// Analyze all go files in pathToPackage as well as any other packages that are
-// referenced by them and construct a static single-assignment representation of
+// NewGoPackage analyzes all go files in pathToPackage as well as any other packages that are
+// referenced by them and constructs a static single-assignment representation of
 // the underlying code.
 func NewGoPackage(pathToPackage string) (*GoPackage, error) {
 	// Detect FQN for project base package
@@ -95,7 +95,7 @@ func NewGoPackage(pathToPackage string) (*GoPackage, error) {
 	}, nil
 }
 
-// Lookup a list of fully qualified profile targets inside the parsed package sources.
+// Find will lookup a list of fully qualified profile targets inside the parsed package sources.
 // These targets serve as the entrypoint for injecting profiler hooks to any
 // function reachable by that entrypoint.
 //
@@ -122,7 +122,7 @@ func NewGoPackage(pathToPackage string) (*GoPackage, error) {
 //  github.com/geckoboard/foo/Foo.DoStuff
 func (pkg *GoPackage) Find(targetList ...string) ([]ProfileTarget, error) {
 	profileTargets := make([]ProfileTarget, len(targetList))
-	var entrypointSSA *ssa.Function = nil
+	var entrypointSSA *ssa.Function
 	for targetIndex, target := range targetList {
 		entrypointSSA = nil
 		for candidate, ssaFn := range pkg.ssaFuncCandidates {
@@ -146,8 +146,8 @@ func (pkg *GoPackage) Find(targetList ...string) ([]ProfileTarget, error) {
 	return profileTargets, nil
 }
 
-// Iterate the list of go source files that comprise this package and any folder
-// defined inside it and apply the patch function to AST entries matching the given
+// Patch iterates the list of go source files that comprise this package and any folder
+// defined inside it and applies the patch function to AST entries matching the given
 // list of targets.
 //
 // This function will automatically overwrite any files that are modified by the

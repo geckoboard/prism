@@ -44,7 +44,7 @@ func ssaCandidates(pathToPackage, fqPkgPrefix, goPath string) (map[string]*ssa.F
 
 	// Build candidate map
 	candidates := make(map[string]*ssa.Function, 0)
-	for ssaFn, _ := range ssautil.AllFunctions(ssaProg) {
+	for ssaFn := range ssautil.AllFunctions(ssaProg) {
 		target := ssaQualifiedFuncName(ssaFn)
 		if strings.HasPrefix(string(target), fqPkgPrefix) {
 			candidates[target] = ssaFn

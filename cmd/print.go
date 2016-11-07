@@ -10,7 +10,7 @@ import (
 
 	"github.com/geckoboard/cli-table"
 	"github.com/geckoboard/prism/profiler"
-	"github.com/urfave/cli"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var (
@@ -18,6 +18,7 @@ var (
 	errNoPrintColumnsSpecified = errors.New("no table columns specified for printing profile")
 )
 
+// PrintProfile displays a captured profile in tabular form.
 func PrintProfile(ctx *cli.Context) error {
 	var err error
 
@@ -36,7 +37,7 @@ func PrintProfile(ctx *cli.Context) error {
 
 	threshold := ctx.Float64("threshold")
 
-	profile, err := profiler.LoadProfile(args[0])
+	profile, err := loadProfile(args[0])
 	if err != nil {
 		return err
 	}
@@ -45,7 +46,7 @@ func PrintProfile(ctx *cli.Context) error {
 
 	// If stdout is not a terminal we need to strip ANSI characters
 	filter := table.StripAnsi
-	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+	if terminal.IsTerminal(int(os.Stdout.Fd())) && !ctx.Bool("no-ansi") {
 		filter = table.PreserveAnsi
 	}
 	profTable.Write(os.Stdout, filter)

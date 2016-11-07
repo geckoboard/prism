@@ -8,8 +8,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// A section of the callgraph that is reachable through a Target root node via
-// one or more hops.
+// CallGraphNode models a section of the callgraph that is reachable through
+// a Target root node via one or more hops.
 type CallGraphNode struct {
 	// A fully qualified function name reachable through a ProfileTarget.
 	Name string
@@ -18,12 +18,13 @@ type CallGraphNode struct {
 	Depth int
 }
 
-// A callgraph consists of a slice of callgraph nodes discovered by performing
+// CallGraph is a slice of callgraph nodes obtained by performing
 // Rapid Type Analysis (RTA) on a ProfileTarget.
 type CallGraph []*CallGraphNode
 
-// A ProfileTarget points to a function that serves as an entrypoint for applying
-// profiler instrumentation code to itself and any function reachable through it.
+// ProfileTarget encapsulates the SSA representation of a function that serves
+// as an entrypoint for applying profiler instrumentation code to itself and
+// any functions reachable through it.
 type ProfileTarget struct {
 	// The fully qualified function name for the target.
 	QualifiedName string
@@ -36,7 +37,7 @@ type ProfileTarget struct {
 	ssaFunc *ssa.Function
 }
 
-// Construct a callgraph containing the list of qualified function names in
+// CallGraph constructs a callgraph containing the list of qualified function names in
 // the project package and its sub-packages that are reachable via a call to
 // the profile target.
 //

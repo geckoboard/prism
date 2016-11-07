@@ -7,8 +7,9 @@ import (
 	"time"
 )
 
+// Entry Wraps a profile entry.
 type Entry struct {
-	ThreadId uint64
+	ThreadID uint64
 
 	Label string `json:"label"`
 	Name  string `json:"name"`
@@ -71,7 +72,7 @@ func (pe *Entry) updateStats(overhead time.Duration) {
 
 // Recursively subtract aggregated child node overhead from parent's total time.
 func (pe *Entry) subtractOverhead() {
-	var childOverhead time.Duration = 0
+	var childOverhead time.Duration
 	for _, child := range pe.Children {
 		childOverhead += child.TotalProfileOverhead
 	}
@@ -79,7 +80,7 @@ func (pe *Entry) subtractOverhead() {
 	pe.TotalTime -= childOverhead
 }
 
-// Recursively free profile entries.
+// Free recursively frees all profile entries nested under this entry.
 func (pe *Entry) Free() {
 	// Free children first
 	for _, child := range pe.Children {

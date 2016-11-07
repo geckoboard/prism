@@ -2,11 +2,14 @@ package profiler
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"runtime"
 	"strconv"
 	"sync"
+)
+
+const (
+	base10CutOff = (1<<64 - 1) / 11
 )
 
 var (
@@ -22,7 +25,7 @@ var stackBufPool = sync.Pool{
 }
 
 // Detect the current goroutine id.
-func threadId() uint64 {
+func threadID() uint64 {
 	bp := stackBufPool.Get().(*[]byte)
 	defer stackBufPool.Put(bp)
 	b := *bp
@@ -31,57 +34,25 @@ func threadId() uint64 {
 	b = bytes.TrimPrefix(b, goRoutinePrefix)
 	i := bytes.IndexByte(b, ' ')
 	if i < 0 {
-		panic(fmt.Sprintf("threadId(): [BUG] missing space at %q", b))
+		panic(fmt.Sprintf("threadID(): [BUG] missing space at %q", b))
 	}
 	b = b[:i]
-	n, err := parseUintBytes(b, 10, 64)
+	n, err := parseBase10UintBytes(b, 64)
 	if err != nil {
-		panic(fmt.Sprintf("threadId(): [BUG] failed to parse goroutine ID out of %q: %v", b, err))
+		panic(fmt.Sprintf("threadID(): [BUG] failed to parse goroutine ID out of %q: %v", b, err))
 	}
 	return n
 }
 
-// parseUintBytes works like strconv.ParseUint, but using a []byte.
-func parseUintBytes(s []byte, base int, bitSize int) (n uint64, err error) {
-	var cutoff, maxVal uint64
-
-	if bitSize == 0 {
-		bitSize = int(strconv.IntSize)
-	}
-
-	s0 := s
-	switch {
-	case len(s) < 1:
+// parseUintBytes works like strconv.ParseUint with base=10, but using a []byte.
+func parseBase10UintBytes(s []byte, bitSize int) (n uint64, err error) {
+	if len(s) == 0 {
 		err = strconv.ErrSyntax
-		return n, &strconv.NumError{Func: "ParseUint", Num: string(s0), Err: err}
-
-	case 2 <= base && base <= 36:
-		// valid base; nothing to do
-
-	case base == 0:
-		// Look for octal, hex prefix.
-		switch {
-		case s[0] == '0' && len(s) > 1 && (s[1] == 'x' || s[1] == 'X'):
-			base = 16
-			s = s[2:]
-			if len(s) < 1 {
-				err = strconv.ErrSyntax
-				return n, &strconv.NumError{Func: "ParseUint", Num: string(s0), Err: err}
-			}
-		case s[0] == '0':
-			base = 8
-		default:
-			base = 10
-		}
-
-	default:
-		err = errors.New("invalid base " + strconv.Itoa(base))
-		return n, &strconv.NumError{Func: "ParseUint", Num: string(s0), Err: err}
+		return n, &strconv.NumError{Func: "ParseUint", Num: string(s), Err: err}
 	}
 
 	n = 0
-	cutoff = cutoff64(base)
-	maxVal = 1<<uint(bitSize) - 1
+	var maxVal uint64 = 1<<uint(bitSize) - 1
 
 	for i := 0; i < len(s); i++ {
 		var v byte
@@ -89,46 +60,28 @@ func parseUintBytes(s []byte, base int, bitSize int) (n uint64, err error) {
 		switch {
 		case '0' <= d && d <= '9':
 			v = d - '0'
-		case 'a' <= d && d <= 'z':
-			v = d - 'a' + 10
-		case 'A' <= d && d <= 'Z':
-			v = d - 'A' + 10
 		default:
 			n = 0
 			err = strconv.ErrSyntax
-			return n, &strconv.NumError{Func: "ParseUint", Num: string(s0), Err: err}
-		}
-		if int(v) >= base {
-			n = 0
-			err = strconv.ErrSyntax
-			return n, &strconv.NumError{Func: "ParseUint", Num: string(s0), Err: err}
+			return n, &strconv.NumError{Func: "parseBase10UintBytes", Num: string(s), Err: err}
 		}
 
-		if n >= cutoff {
-			// n*base o/verflows
+		if n >= base10CutOff {
 			n = 1<<64 - 1
 			err = strconv.ErrRange
-			return n, &strconv.NumError{Func: "ParseUint", Num: string(s0), Err: err}
+			return n, &strconv.NumError{Func: "parseBase10UintBytes", Num: string(s), Err: err}
 		}
-		n *= uint64(base)
+		n *= 10
 
 		n1 := n + uint64(v)
 		if n1 < n || n1 > maxVal {
 			// n+v overflows
 			n = 1<<64 - 1
 			err = strconv.ErrRange
-			return n, &strconv.NumError{Func: "ParseUint", Num: string(s0), Err: err}
+			return n, &strconv.NumError{Func: "parseBase10UintBytes", Num: string(s), Err: err}
 		}
 		n = n1
 	}
 
 	return n, nil
-}
-
-// Return the first number n such that n*base >= 1<<64.
-func cutoff64(base int) uint64 {
-	if base < 2 {
-		return 0
-	}
-	return (1<<64-1)/uint64(base) + 1
 }

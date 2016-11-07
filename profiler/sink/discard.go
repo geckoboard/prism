@@ -3,11 +3,13 @@ package sink
 import "github.com/geckoboard/prism/profiler"
 
 type discardSink struct {
-	sigChan   chan struct{}
-	inputChan chan *profiler.Entry
+	sigChan      chan struct{}
+	inputChan    chan *profiler.Entry
+	numDiscarded int
 }
 
-// Create a new profile entry sink which discards incoming profile entries.
+// NewDiscardSink creates a profile entry sink instance which discards all
+// incoming profile entries.
 func NewDiscardSink() profiler.Sink {
 	return &discardSink{
 		sigChan: make(chan struct{}, 0),
@@ -52,5 +54,6 @@ func (s *discardSink) worker() {
 			return
 		}
 		profile.Free()
+		s.numDiscarded++
 	}
 }
