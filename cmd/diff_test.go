@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/geckoboard/prism/profiler"
-	"github.com/urfave/cli"
+	"gopkg.in/urfave/cli.v1"
 )
 
 func TestCorrelateEntries(t *testing.T) {
@@ -131,7 +131,11 @@ func TestDiffWithoutProfileLabel(t *testing.T) {
 	os.Stdout = pWrite
 
 	// Run diff and capture output
-	DiffProfiles(ctx)
+	err = DiffProfiles(ctx)
+	if err != nil {
+		os.Stdout = stdOut
+		t.Fatal(err)
+	}
 
 	// Drain pipe and restore stdout
 	var buf bytes.Buffer

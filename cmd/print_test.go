@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/urfave/cli"
+	"gopkg.in/urfave/cli.v1"
 )
 
 func TestPrintWithProfileLabel(t *testing.T) {
@@ -30,7 +30,11 @@ func TestPrintWithProfileLabel(t *testing.T) {
 	os.Stdout = pWrite
 
 	// Run diff and capture output
-	PrintProfile(ctx)
+	err = PrintProfile(ctx)
+	if err != nil {
+		os.Stdout = stdOut
+		t.Fatal(err)
+	}
 
 	// Drain pipe and restore stdout
 	var buf bytes.Buffer

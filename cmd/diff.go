@@ -11,7 +11,7 @@ import (
 
 	"github.com/geckoboard/cli-table"
 	"github.com/geckoboard/prism/profiler"
-	"github.com/urfave/cli"
+	"gopkg.in/urfave/cli.v1"
 )
 
 const (

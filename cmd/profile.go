@@ -16,7 +16,7 @@ import (
 
 	"github.com/geckoboard/prism/profiler"
 	"github.com/geckoboard/prism/tools"
-	"github.com/urfave/cli"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var (
