@@ -1,0 +1,8 @@
+machine:
+  environment:
+    PATH: ~/.local/bin:$PATH
+test:
+  pre:
+    - cd $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME && go vet ./...
+  override:
+    - make test-ci
