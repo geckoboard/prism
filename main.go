@@ -34,7 +34,7 @@ func main() {
 					Usage: "project run command",
 				},
 				cli.StringFlag{
-					Name:  "output-folder, o",
+					Name:  "output-dir, o",
 					Value: os.TempDir(),
 					Usage: "path for storing patched project version",
 				},
@@ -48,8 +48,8 @@ func main() {
 					Usage: "fully qualified function name to profile",
 				},
 				cli.StringFlag{
-					Name:  "profile-folder",
-					Usage: "specify the output folder for captured profiles",
+					Name:  "profile-dir",
+					Usage: "specify the output dir for captured profiles",
 					Value: defaultOutputDir(),
 				},
 				cli.StringFlag{
@@ -60,6 +60,10 @@ func main() {
 					Name:  "profile-vendored-pkg",
 					Usage: "inject profile hooks to any vendored packages matching this regex. If left unspecified, no vendored packages will be hooked",
 					Value: &cli.StringSlice{},
+				},
+				cli.BoolFlag{
+					Name:  "no-ansi",
+					Usage: "disable ansi output",
 				},
 			},
 		},
@@ -80,6 +84,10 @@ func main() {
 					Value: 0.0,
 					Usage: "only show measurements for entries whose time exceeds the threshold",
 				},
+				cli.BoolFlag{
+					Name:  "no-ansi",
+					Usage: "disable ansi output",
+				},
 			},
 		},
 		{
@@ -98,6 +106,10 @@ func main() {
 					Name:  "threshold",
 					Value: 0.0,
 					Usage: "only compare entries whose time difference exceeds the threshold",
+				},
+				cli.BoolFlag{
+					Name:  "no-ansi",
+					Usage: "disable ansi output",
 				},
 			},
 		},

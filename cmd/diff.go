@@ -59,7 +59,7 @@ func DiffProfiles(ctx *cli.Context) error {
 
 	// If stdout is not a terminal we need to strip ANSI characters
 	filter := table.StripAnsi
-	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+	if terminal.IsTerminal(int(os.Stdout.Fd())) && !ctx.Bool("no-ansi") {
 		filter = table.PreserveAnsi
 	}
 	diffTable.Write(os.Stdout, filter)

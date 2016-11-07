@@ -55,7 +55,7 @@ func ProfileProject(ctx *cli.Context) error {
 	absProjPath += "/"
 
 	// Clone project
-	tmpDir, tmpAbsProjPath, err := cloneProject(absProjPath, ctx.String("output-folder"))
+	tmpDir, tmpAbsProjPath, err := cloneProject(absProjPath, ctx.String("output-dir"))
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func ProfileProject(ctx *cli.Context) error {
 	updatedFiles, patchCount, err := goPackage.Patch(
 		ctx.StringSlice("profile-vendored-pkg"),
 		tools.PatchCmd{Targets: profileTargets, PatchFn: tools.InjectProfiler()},
-		tools.PatchCmd{Targets: bootstrapTargets, PatchFn: tools.InjectProfilerBootstrap(ctx.String("profile-folder"), ctx.String("profile-label"))},
+		tools.PatchCmd{Targets: bootstrapTargets, PatchFn: tools.InjectProfilerBootstrap(ctx.String("profile-dir"), ctx.String("profile-label"))},
 	)
 	if err != nil {
 		return err
@@ -95,13 +95,13 @@ func ProfileProject(ctx *cli.Context) error {
 	// Handle build step if a build command is specified
 	buildCmd := ctx.String("build-cmd")
 	if buildCmd != "" {
-		err = buildProject(goPackage.GOPATH, tmpAbsProjPath, buildCmd)
+		err = buildProject(goPackage.GOPATH, tmpAbsProjPath, buildCmd, ctx.Bool("no-ansi"))
 		if err != nil {
 			return err
 		}
 	}
 
-	return runProject(goPackage.GOPATH, tmpAbsProjPath, runCmd)
+	return runProject(goPackage.GOPATH, tmpAbsProjPath, runCmd, ctx.Bool("no-ansi"))
 }
 
 // Clone project and return path to the cloned project.
@@ -169,12 +169,17 @@ func overrideGoPath(adjustedGoPath string) []string {
 }
 
 // Build patched project copy.
-func buildProject(adjustedGoPath, tmpAbsProjPath, buildCmd string) error {
-	fmt.Printf("profile: building project (%s)\n", buildCmd)
+func buildProject(adjustedGoPath, tmpAbsProjPath, buildCmd string, stripAnsi bool) error {
+	fmt.Printf("profile: building patched project (%s)\n", buildCmd)
+
+	color := "\033[32m"
+	if stripAnsi {
+		color = ""
+	}
 
 	// Setup buffered output writers
-	stdout := newPaddedWriter(os.Stdout, "profile: [build] > ", "\033[32m")
-	stderr := newPaddedWriter(os.Stderr, "profile: [build] > ", "\033[32m")
+	stdout := newPaddedWriter(os.Stdout, "profile: [build] > ", color)
+	stderr := newPaddedWriter(os.Stderr, "profile: [build] > ", color)
 
 	// Setup the build command and set up its cwd and env overrides
 	var execCmd *exec.Cmd
@@ -203,12 +208,17 @@ func buildProject(adjustedGoPath, tmpAbsProjPath, buildCmd string) error {
 }
 
 // Run patched project to collect profiler data.
-func runProject(adjustedGoPath, tmpAbsProjPath, runCmd string) error {
+func runProject(adjustedGoPath, tmpAbsProjPath, runCmd string, stripAnsi bool) error {
 	fmt.Printf("profile: running patched project (%s)\n", runCmd)
 
+	color := "\033[32m"
+	if stripAnsi {
+		color = ""
+	}
+
 	// Setup buffered output writers
-	stdout := newPaddedWriter(os.Stdout, "profile: [run] > ", "\033[32m")
-	stderr := newPaddedWriter(os.Stderr, "profile: [run] > ", "\033[32m")
+	stdout := newPaddedWriter(os.Stdout, "profile: [run] > ", color)
+	stderr := newPaddedWriter(os.Stderr, "profile: [run] > ", color)
 
 	// Setup the run command and set up its cwd and env overrides
 	var execCmd *exec.Cmd
@@ -231,7 +241,9 @@ func runProject(adjustedGoPath, tmpAbsProjPath, runCmd string) error {
 	go func() {
 		s := <-sigChan
 		gotSignal = true
-		execCmd.Process.Signal(s)
+		if execCmd.Process != nil {
+			execCmd.Process.Signal(s)
+		}
 	}()
 	err := execCmd.Run()
 
