@@ -1,14 +1,23 @@
 package cmd
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestParseTableColumnList(t *testing.T) {
 	colNamesToHeaderNames := map[string]string{
 		"total":       "total (ms)",
-		"avg":         "avg (ms)",
 		"min":         "min (ms)",
 		"max":         "max (ms)",
+		"mean":        "mean (ms)",
+		"median":      "median (ms)",
 		"invocations": "invoc",
+		"p50":         "p50 (ms)",
+		"p75":         "p75 (ms)",
+		"p90":         "p90 (ms)",
+		"p99":         "p99 (ms)",
+		"stddev":      "stddev",
 	}
 
 	for colName, expHeader := range colNamesToHeaderNames {
@@ -31,7 +40,7 @@ func TestParseTableColumnList(t *testing.T) {
 
 func TestParseTableColumnListError(t *testing.T) {
 	_, err := parseTableColumList("total,     unknown")
-	expError := `unsupported column name "unknown"; supported column names are: total, avg, min, max, invocations`
+	expError := fmt.Sprintf(`unsupported column name "unknown"; supported column names are: %s`, SupportedColumnNames())
 	if err == nil || err.Error() != expError {
 		t.Fatalf("expected to get error %q; got %v", expError, err)
 	}
@@ -44,6 +53,6 @@ func TestColumnTypePanicForUnknownType(t *testing.T) {
 		}
 	}()
 
-	unknownType := tableColInvocations + 1000
+	unknownType := numTableColumns
 	unknownType.Header()
 }
