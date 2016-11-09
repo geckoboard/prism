@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh/terminal"
 
@@ -55,7 +56,7 @@ func PrintProfile(ctx *cli.Context) error {
 }
 
 // Create a table with profile details.
-func tabularizeProfile(profile *profiler.Entry, tableCols []tableColumnType, threshold float64) *table.Table {
+func tabularizeProfile(profile *profiler.Profile, tableCols []tableColumnType, threshold float64) *table.Table {
 	t := table.New(len(tableCols) + 1)
 	t.SetPadding(1)
 
@@ -70,60 +71,72 @@ func tabularizeProfile(profile *profiler.Entry, tableCols []tableColumnType, thr
 	}
 
 	// Populate rows
-	populateProfileRows(profile, t, tableCols, threshold)
+	populateMetricRow(0, profile.Target, t, tableCols, threshold)
 
 	return t
 }
 
-// Populate table rows with profile entry metrics.
-func populateProfileRows(pe *profiler.Entry, t *table.Table, tableCols []tableColumnType, threshold float64) {
+// Populate table rows with call metrics.
+func populateMetricRow(depth int, metrics *profiler.CallMetrics, t *table.Table, tableCols []tableColumnType, threshold float64) {
 	row := make([]string, len(tableCols)+1)
 
 	// Fill in call
-	call := strings.Repeat("| ", pe.Depth)
-	if len(pe.Children) == 0 {
+	call := strings.Repeat("| ", depth)
+	if len(metrics.NestedCalls) == 0 {
 		call += "- "
 	} else {
 		call += "+ "
 	}
-	row[0] = call + pe.Name
-
-	// Populate measurement columns
-	totalTime := float64(pe.TotalTime.Nanoseconds()) / 1.0e6
-	avgTime := float64(pe.TotalTime.Nanoseconds()) / float64(pe.Invocations*1e6)
-	minTime := float64(pe.MinTime.Nanoseconds()) / 1.0e6
-	maxTime := float64(pe.MaxTime.Nanoseconds()) / 1.0e6
+	row[0] = call + metrics.FnName
 
 	baseIndex := 1
 	for dIndex, dType := range tableCols {
-		switch dType {
-		case tableColTotal:
-			row[baseIndex+dIndex] = fmtEntry(totalTime, threshold)
-		case tableColAvg:
-			row[baseIndex+dIndex] = fmtEntry(avgTime, threshold)
-		case tableColMin:
-			row[baseIndex+dIndex] = fmtEntry(minTime, threshold)
-		case tableColMax:
-			row[baseIndex+dIndex] = fmtEntry(maxTime, threshold)
-		case tableColInvocations:
-			row[baseIndex+dIndex] = fmt.Sprintf("%d", pe.Invocations)
-		}
+		row[baseIndex+dIndex] = fmtEntry(metrics, dType, threshold)
 	}
-
-	// Append row to table
 	t.Append(row)
 
-	//  Process children
-	for _, child := range pe.Children {
-		populateProfileRows(child, t, tableCols, threshold)
+	// Emit table rows for nested calls
+	for _, childMetrics := range metrics.NestedCalls {
+		populateMetricRow(depth+1, childMetrics, t, tableCols, threshold)
 	}
 }
 
-// Format profile entry
-func fmtEntry(candidate float64, threshold float64) string {
-	if candidate < threshold {
+// Format metric entry. An empty string will be returned if the entry is of
+// time.Duration type and its value is less than the specified threshold. All
+// time duration entries will be formatted as milliseconds.
+func fmtEntry(metrics *profiler.CallMetrics, metricType tableColumnType, threshold float64) string {
+	var val time.Duration
+
+	switch metricType {
+	case tableColInvocations:
+		return fmt.Sprintf("%d", metrics.Invocations)
+	case tableColStdDev:
+		return fmt.Sprintf("%3.3f", metrics.StdDev)
+	case tableColTotal:
+		val = metrics.TotalTime
+	case tableColMin:
+		val = metrics.MinTime
+	case tableColMax:
+		val = metrics.MaxTime
+	case tableColMean:
+		val = metrics.MeanTime
+	case tableColMedian:
+		val = metrics.MedianTime
+	case tableColP50:
+		val = metrics.P50Time
+	case tableColP75:
+		val = metrics.P75Time
+	case tableColP90:
+		val = metrics.P90Time
+	case tableColP99:
+		val = metrics.P99Time
+	}
+
+	// Convert value to ms
+	ms := float64(val.Nanoseconds()) / 1.0e6
+	if ms < threshold {
 		return ""
 	}
 
-	return fmt.Sprintf("%1.2f", candidate)
+	return fmt.Sprintf("%1.2f", ms)
 }

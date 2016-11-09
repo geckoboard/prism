@@ -274,10 +274,10 @@ func tokenizeArgs(args string) []string {
 }
 
 // loadProfile reads a profile from disk.
-func loadProfile(file string) (*profiler.Entry, error) {
+func loadProfile(file string) (*profiler.Profile, error) {
 	if !strings.HasSuffix(file, ".json") {
 		return nil, fmt.Errorf(
-			"unrecognized profile extension %s for %s; only json profiles are currently supported",
+			"unrecognized profile extension %q for %q; only json profiles are currently supported",
 			filepath.Ext(file),
 			file,
 		)
@@ -294,7 +294,7 @@ func loadProfile(file string) (*profiler.Entry, error) {
 		return nil, err
 	}
 
-	var pe *profiler.Entry
-	err = json.Unmarshal(data, &pe)
-	return pe, err
+	var profile *profiler.Profile
+	err = json.Unmarshal(data, &profile)
+	return profile, err
 }

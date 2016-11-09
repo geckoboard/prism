@@ -76,8 +76,8 @@ func main() {
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:  "columns",
-					Value: "total,avg,min,max,invocations",
-					Usage: "columns to include in the printout",
+					Value: "total,min,mean,max,invocations",
+					Usage: fmt.Sprintf("columns to include in the output; supported options: %s", cmd.SupportedColumnNames()),
 				},
 				cli.Float64Flag{
 					Name:  "threshold",
@@ -99,8 +99,8 @@ func main() {
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:  "columns",
-					Value: "total,avg,min,max,invocations",
-					Usage: "columns to include in diff table",
+					Value: "total,min,mean,max,invocations",
+					Usage: fmt.Sprintf("columns to include in the diff output; supported options: %s", cmd.SupportedColumnNames()),
 				},
 				cli.Float64Flag{
 					Name:  "threshold",
