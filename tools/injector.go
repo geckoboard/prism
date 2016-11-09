@@ -52,7 +52,7 @@ func InjectProfiler() PatchFunc {
 					X: &ast.BasicLit{
 						ValuePos: token.NoPos,
 						Kind:     token.STRING,
-						Value:    fmt.Sprintf(`prismProfiler.%s("%s")`, enterFn, cgNode.Name),
+						Value:    fmt.Sprintf(`prismProfiler.%s("%s", prismProfiler.Time())`, enterFn, cgNode.Name),
 					},
 				},
 				&ast.ExprStmt{

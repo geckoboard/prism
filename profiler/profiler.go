@@ -25,6 +25,13 @@ var (
 	outputSink Sink
 )
 
+// Time is an alias to time.Time(). It is exposed by this package so our injected
+// code does not need to import the time package which may cause conflict with
+// other imported/aliased packages.
+func Time() time.Time {
+	return time.Now()
+}
+
 // Init handles the initialization of the prism profiler. This method must be
 // called before invoking any other method from this package.
 func Init(sink Sink, capturedProfileLabel string) {
