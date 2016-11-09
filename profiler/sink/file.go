@@ -95,15 +95,15 @@ func (s *fileSink) worker() {
 // Construct the path to a profile file for this entry. This function will
 // also pass the path through filepath.Clean to ensure that the proper slashes
 // are used depending on the host OS.
-func outputFile(outputDir string, pe *profiler.Profile, extension string) string {
+func outputFile(outputDir string, profile *profiler.Profile, extension string) string {
 	return filepath.Clean(
 		fmt.Sprintf(
 			"%s/%s%s-%d-%d.%s",
 			outputDir,
 			profilePrefix,
-			badCharRegex.ReplaceAllString(pe.Name, "_"),
-			pe.EnteredAt.UnixNano(),
-			pe.ThreadID,
+			badCharRegex.ReplaceAllString(profile.Target.FnName, "_"),
+			profile.CreatedAt.UnixNano(),
+			profile.ID,
 			extension,
 		),
 	)

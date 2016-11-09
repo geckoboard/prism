@@ -49,7 +49,7 @@ func (s *discardSink) worker() {
 	}()
 
 	for {
-		profile, sinkOpen := <-s.inputChan
+		_, sinkOpen := <-s.inputChan
 		if !sinkOpen {
 			return
 		}

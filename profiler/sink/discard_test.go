@@ -15,7 +15,7 @@ func TestDiscardSink(t *testing.T) {
 
 	numEntries := 5
 	for i := 0; i < numEntries; i++ {
-		s.Input() <- &profiler.Entry{}
+		s.Input() <- &profiler.Profile{}
 	}
 
 	err = s.Close()
