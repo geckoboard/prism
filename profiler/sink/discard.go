@@ -4,7 +4,7 @@ import "github.com/geckoboard/prism/profiler"
 
 type discardSink struct {
 	sigChan      chan struct{}
-	inputChan    chan *profiler.Entry
+	inputChan    chan *profiler.Profile
 	numDiscarded int
 }
 
@@ -18,7 +18,7 @@ func NewDiscardSink() profiler.Sink {
 
 // Initialize the sink.
 func (s *discardSink) Open(inputBufferSize int) error {
-	s.inputChan = make(chan *profiler.Entry, inputBufferSize)
+	s.inputChan = make(chan *profiler.Profile, inputBufferSize)
 
 	// start worker and wait for ready signal
 	go s.worker()
@@ -36,7 +36,7 @@ func (s *discardSink) Close() error {
 }
 
 // Get a channel for piping profile entries to the sink.
-func (s *discardSink) Input() chan<- *profiler.Entry {
+func (s *discardSink) Input() chan<- *profiler.Profile {
 	return s.inputChan
 }
 
@@ -53,7 +53,6 @@ func (s *discardSink) worker() {
 		if !sinkOpen {
 			return
 		}
-		profile.Free()
 		s.numDiscarded++
 	}
 }

@@ -9,5 +9,5 @@ type Sink interface {
 	Close() error
 
 	// Get a channel for piping profile entries to the sink.
-	Input() chan<- *Entry
+	Input() chan<- *Profile
 }

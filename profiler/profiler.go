@@ -17,8 +17,9 @@ var (
 	// A label to be applied to generated profiles.
 	profileLabel string
 
-	// We maintain a set of active profiles grouped by goroutine id.
-	activeProfiles map[uint64]*Entry
+	// We maintain a dedicated call stack for each profiled goroutine. Each
+	// map entry points to the currently entered function scope.
+	activeProfiles map[uint64]*fnCall
 
 	// A sink for emitted profile entries.
 	outputSink Sink
@@ -34,7 +35,7 @@ func Init(sink Sink, capturedProfileLabel string) {
 	}
 
 	outputSink = sink
-	activeProfiles = make(map[uint64]*Entry, 0)
+	activeProfiles = make(map[uint64]*fnCall, 0)
 	profileLabel = capturedProfileLabel
 }
 
@@ -50,100 +51,95 @@ func Shutdown() {
 }
 
 // BeginProfile creates a new profile.
-func BeginProfile(name string) {
+func BeginProfile(rootFnName string, at time.Time) {
 	tick := time.Now()
 
-	profileMutex.Lock()
-	defer profileMutex.Unlock()
-
 	tid := threadID()
-	pe := makeEntry(name, 0)
-	pe.Label = profileLabel
-	activeProfiles[tid] = pe
-	pe.ThreadID = tid
-	pe.EnteredAt = time.Now()
-	pe.TotalProfileOverhead += time.Since(tick)
+
+	rootCall := makeFnCall(rootFnName)
+	rootCall.enteredAt = at
+
+	profileMutex.Lock()
+	activeProfiles[tid] = rootCall
+	profileMutex.Unlock()
+
+	rootCall.profilerOverhead += time.Since(tick)
 }
 
 // EndProfile finalizes and ships a currently active profile.
 func EndProfile() {
 	tick := time.Now()
+	tid := threadID()
 
 	profileMutex.Lock()
-	tid := threadID()
-	profile, valid := activeProfiles[tid]
+	rootCall := activeProfiles[tid]
+	if rootCall == nil {
+		// No active profile for this threadID; skip
+		profileMutex.Unlock()
+		return
+	}
+
 	delete(activeProfiles, tid)
 	profileMutex.Unlock()
 
-	if !valid {
-		return
-	}
+	// Generate profile
+	rootCall.exitedAt = time.Now()
+	rootCall.profilerOverhead += time.Since(tick)
+	profile := genProfile(tid, profileLabel, rootCall)
+	rootCall.free()
 
-	// Update profile stats and ship it
-	profile.subtractOverhead()
-	profile.updateStats(time.Since(tick))
+	// Ship profile
 	outputSink.Input() <- profile
 }
 
-// Enter appends a new scope inside the currently active profile.
-func Enter(name string) {
+// Enter adds a new nested function call to the profile linked to the current go-routine ID.
+func Enter(fnName string, at time.Time) {
 	tick := time.Now()
-
-	profileMutex.Lock()
-	defer profileMutex.Unlock()
-
 	tid := threadID()
 
-	profile, valid := activeProfiles[tid]
-	if !valid {
-		// Invoked through another call path that we do not monitor
+	profileMutex.Lock()
+	parentCall := activeProfiles[tid]
+	if parentCall == nil {
+		// No active profile for this threadID; skip
+		profileMutex.Unlock()
 		return
 	}
 
-	var pe *Entry
+	call := makeFnCall(fnName)
+	call.enteredAt = at
+	parentCall.nestCall(call)
 
-	// Scan nested scopes from end to start looking for an existing match
-	index := len(profile.Children) - 1
-	for ; index >= 0; index-- {
-		if profile.Children[index].Name == name {
-			pe = profile.Children[index]
-			break
-		}
-	}
+	activeProfiles[tid] = call
+	profileMutex.Unlock()
 
-	// First invocation
-	if pe == nil {
-		pe = makeEntry(name, profile.Depth+1)
-		profile.Children = append(profile.Children, pe)
-	}
-
-	// Enter scope
-	pe.Parent = profile
-	pe.EnteredAt = time.Now()
-	activeProfiles[tid] = pe
-	pe.TotalProfileOverhead += time.Since(tick)
+	// Update overhead estimate
+	call.profilerOverhead += time.Since(tick)
 }
 
-// Leave exits the inner-most scope inside the currently active profile.
+// Leave exits the current function in the profile linked to the current go-routine ID.
 func Leave() {
 	tick := time.Now()
+	tid := threadID()
 
 	profileMutex.Lock()
-	defer profileMutex.Unlock()
-
-	tid := threadID()
-	pe, valid := activeProfiles[tid]
-	if !valid {
-		// Invoked through another call path that we do not monitor
+	call := activeProfiles[tid]
+	if call == nil {
+		// No active profile for this threadID; skip
+		profileMutex.Unlock()
 		return
 	}
 
-	if pe.Parent == nil {
+	if call.parent == nil {
+		profileMutex.Unlock()
 		panic(fmt.Sprintf("profiler: [BUG] attempted to exit an active profile (tid %d)", tid))
 	}
 
-	// Pop parent
-	activeProfiles[tid] = pe.Parent
+	// Exit current scope
+	activeProfiles[tid] = call.parent
+	profileMutex.Unlock()
 
-	pe.updateStats(time.Since(tick))
+	// Update exit timestamp and overhead estimate
+	call.exitedAt = time.Now()
+	call.profilerOverhead += time.Since(tick)
+	call.parent.profilerOverhead += call.profilerOverhead
 }
