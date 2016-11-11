@@ -2,7 +2,6 @@ package profiler
 
 import (
 	"bytes"
-	"fmt"
 	"runtime"
 	"strconv"
 	"sync"
@@ -34,12 +33,12 @@ func threadID() uint64 {
 	b = bytes.TrimPrefix(b, goRoutinePrefix)
 	i := bytes.IndexByte(b, ' ')
 	if i < 0 {
-		panic(fmt.Sprintf("threadID(): [BUG] missing space at %q", b))
+		panic("threadID(): [BUG] missing space at goRoutinePrefix")
 	}
 	b = b[:i]
 	n, err := parseBase10UintBytes(b, 64)
 	if err != nil {
-		panic(fmt.Sprintf("threadID(): [BUG] failed to parse goroutine ID out of %q: %v", b, err))
+		panic("threadID(): [BUG] failed to parse goroutine ID")
 	}
 	return n
 }

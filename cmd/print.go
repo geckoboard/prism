@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh/terminal"
 
@@ -27,7 +28,12 @@ func PrintProfile(ctx *cli.Context) error {
 		return errNoProfile
 	}
 
-	tableCols, err := parseTableColumList(ctx.String("columns"))
+	df, err := parseDisplayFormat(ctx.String("display-format"))
+	if err != nil {
+		return err
+	}
+
+	tableCols, err := parseTableColumList(ctx.String("display-columns"))
 	if err != nil {
 		return err
 	}
@@ -42,7 +48,7 @@ func PrintProfile(ctx *cli.Context) error {
 		return err
 	}
 
-	profTable := tabularizeProfile(profile, tableCols, threshold)
+	profTable := tabularizeProfile(profile, tableCols, threshold, df)
 
 	// If stdout is not a terminal we need to strip ANSI characters
 	filter := table.StripAnsi
@@ -55,7 +61,7 @@ func PrintProfile(ctx *cli.Context) error {
 }
 
 // Create a table with profile details.
-func tabularizeProfile(profile *profiler.Entry, tableCols []tableColumnType, threshold float64) *table.Table {
+func tabularizeProfile(profile *profiler.Profile, tableCols []tableColumnType, threshold float64, df displayFormat) *table.Table {
 	t := table.New(len(tableCols) + 1)
 	t.SetPadding(1)
 
@@ -66,64 +72,95 @@ func tabularizeProfile(profile *profiler.Entry, tableCols []tableColumnType, thr
 		t.SetHeader(0, "call stack", table.AlignLeft)
 	}
 	for dIndex, dType := range tableCols {
-		t.SetHeader(dIndex+1, dType.Header(), table.AlignRight)
+		t.SetHeader(dIndex+1, dType.Header(df), table.AlignRight)
 	}
 
 	// Populate rows
-	populateProfileRows(profile, t, tableCols, threshold)
+	populateMetricRow(0, profile.Target, profile.Target, t, tableCols, threshold, df)
 
 	return t
 }
 
-// Populate table rows with profile entry metrics.
-func populateProfileRows(pe *profiler.Entry, t *table.Table, tableCols []tableColumnType, threshold float64) {
+// Populate table rows with call metrics.
+func populateMetricRow(depth int, rootMetrics, rowMetrics *profiler.CallMetrics, t *table.Table, tableCols []tableColumnType, threshold float64, df displayFormat) {
 	row := make([]string, len(tableCols)+1)
 
 	// Fill in call
-	call := strings.Repeat("| ", pe.Depth)
-	if len(pe.Children) == 0 {
+	call := strings.Repeat("| ", depth)
+	if len(rowMetrics.NestedCalls) == 0 {
 		call += "- "
 	} else {
 		call += "+ "
 	}
-	row[0] = call + pe.Name
-
-	// Populate measurement columns
-	totalTime := float64(pe.TotalTime.Nanoseconds()) / 1.0e6
-	avgTime := float64(pe.TotalTime.Nanoseconds()) / float64(pe.Invocations*1e6)
-	minTime := float64(pe.MinTime.Nanoseconds()) / 1.0e6
-	maxTime := float64(pe.MaxTime.Nanoseconds()) / 1.0e6
+	row[0] = call + rowMetrics.FnName
 
 	baseIndex := 1
 	for dIndex, dType := range tableCols {
-		switch dType {
-		case tableColTotal:
-			row[baseIndex+dIndex] = fmtEntry(totalTime, threshold)
-		case tableColAvg:
-			row[baseIndex+dIndex] = fmtEntry(avgTime, threshold)
-		case tableColMin:
-			row[baseIndex+dIndex] = fmtEntry(minTime, threshold)
-		case tableColMax:
-			row[baseIndex+dIndex] = fmtEntry(maxTime, threshold)
-		case tableColInvocations:
-			row[baseIndex+dIndex] = fmt.Sprintf("%d", pe.Invocations)
-		}
+		row[baseIndex+dIndex] = fmtEntry(rootMetrics, rowMetrics, dType, threshold, df)
 	}
-
-	// Append row to table
 	t.Append(row)
 
-	//  Process children
-	for _, child := range pe.Children {
-		populateProfileRows(child, t, tableCols, threshold)
+	// Emit table rows for nested calls
+	for _, childMetrics := range rowMetrics.NestedCalls {
+		populateMetricRow(depth+1, rootMetrics, childMetrics, t, tableCols, threshold, df)
 	}
 }
 
-// Format profile entry
-func fmtEntry(candidate float64, threshold float64) string {
-	if candidate < threshold {
+// Format metric entry. An empty string will be returned if the entry is of
+// time.Duration type and its value is less than the specified threshold. All
+// time duration entries will be formatted as milliseconds.
+func fmtEntry(rootMetrics, metrics *profiler.CallMetrics, metricType tableColumnType, threshold float64, df displayFormat) string {
+	var val, rootVal time.Duration
+
+	switch metricType {
+	case tableColInvocations:
+		return fmt.Sprintf("%d", metrics.Invocations)
+	case tableColStdDev:
+		return fmt.Sprintf("%3.3f", metrics.StdDev)
+	case tableColTotal:
+		val = metrics.TotalTime
+		rootVal = rootMetrics.TotalTime
+	case tableColMin:
+		val = metrics.MinTime
+		rootVal = rootMetrics.MinTime
+	case tableColMax:
+		val = metrics.MaxTime
+		rootVal = rootMetrics.MaxTime
+	case tableColMean:
+		val = metrics.MeanTime
+		rootVal = rootMetrics.MeanTime
+	case tableColMedian:
+		val = metrics.MedianTime
+		rootVal = rootMetrics.MedianTime
+	case tableColP50:
+		val = metrics.P50Time
+		rootVal = rootMetrics.P50Time
+	case tableColP75:
+		val = metrics.P75Time
+		rootVal = rootMetrics.P75Time
+	case tableColP90:
+		val = metrics.P90Time
+		rootVal = rootMetrics.P90Time
+	case tableColP99:
+		val = metrics.P99Time
+		rootVal = rootMetrics.P99Time
+	}
+
+	// Convert value to ms
+	rootMs := float64(rootVal.Nanoseconds()) / 1.0e6
+	ms := float64(val.Nanoseconds()) / 1.0e6
+	if ms < threshold {
 		return ""
 	}
 
-	return fmt.Sprintf("%1.2f", candidate)
+	switch df {
+	case displayTime:
+		return fmt.Sprintf("%1.2f", ms)
+	default:
+		percent := 0.0
+		if rootMs != 0.0 {
+			percent = 100.0 * ms / rootMs
+		}
+		return fmt.Sprintf("%2.1f%%", percent)
+	}
 }

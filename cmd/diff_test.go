@@ -16,53 +16,76 @@ import (
 )
 
 func TestCorrelateEntries(t *testing.T) {
-	p1 := &profiler.Entry{
-		Name:  "main",
-		Depth: 0,
-		Children: []*profiler.Entry{
-			{
-				Name:  "foo",
-				Depth: 1,
-				Children: []*profiler.Entry{
-					{
-						Name:  "bar",
-						Depth: 2,
+	p1 := &profiler.Profile{
+		Target: &profiler.CallMetrics{
+			FnName: "main",
+			NestedCalls: []*profiler.CallMetrics{
+				{
+					FnName: "foo",
+					NestedCalls: []*profiler.CallMetrics{
+						{
+							FnName:      "bar",
+							NestedCalls: []*profiler.CallMetrics{},
+						},
 					},
 				},
 			},
 		},
 	}
 
-	p2 := &profiler.Entry{
-		Name:  "main",
-		Depth: 0,
-		Children: []*profiler.Entry{
-			{
-				Name:  "bar",
-				Depth: 1,
+	p2 := &profiler.Profile{
+		Target: &profiler.CallMetrics{
+			FnName: "main",
+			NestedCalls: []*profiler.CallMetrics{
+				{
+					FnName:      "bar",
+					NestedCalls: []*profiler.CallMetrics{},
+				},
 			},
 		},
 	}
 
-	out := correlateEntries([]*profiler.Entry{p1, p2})
-	expLen := 3
-	if len(out) != expLen {
-		t.Fatalf("expected correlation map to contain %d entries; got %d", expLen, len(out))
+	profileList := []*profiler.Profile{p1, p2}
+	correlations := prepareCorrelationData(profileList[0], len(profileList))
+	for profileIndex := 1; profileIndex < len(profileList); profileIndex++ {
+		correlations, _ = correlateMetric(profileIndex, profileList[profileIndex].Target, 0, correlations)
 	}
 
-	expLen = 2
-	if len(out["main"]) != expLen {
-		t.Fatalf("expected correlation entry for main to contain %d entries; got %d", expLen, len(out["main"]))
+	expCount := 3
+	if len(correlations) != expCount {
+		t.Fatalf("expected correlation table to contain %d entries; got %d", expCount, len(correlations))
 	}
 
-	expLen = 1
-	if len(out["foo"]) != expLen {
-		t.Fatalf("expected correlation entry for foo to contain %d entries; got %d", expLen, len(out["foo"]))
+	specs := []struct {
+		FnName      string
+		LeftNotNil  bool
+		RightNotNil bool
+	}{
+		{"main", true, true},
+		{"foo", true, false},
+		{"bar", true, true},
 	}
 
-	expLen = 2
-	if len(out["bar"]) != expLen {
-		t.Fatalf("expected correlation entry for bar to contain %d entries; got %d", expLen, len(out["bar"]))
+	for specIndex, spec := range specs {
+		row := correlations[specIndex]
+		if len(row.metrics) != len(profileList) {
+			t.Errorf("[spec %d] expected metric count for correlation row to be %d; got %d", specIndex, len(profileList), len(row.metrics))
+			continue
+		}
+
+		if row.fnName != spec.FnName {
+			t.Errorf("[spec %d] expected correlation row fnName to be %q; got %q", specIndex, spec.FnName, row.fnName)
+			continue
+		}
+
+		if (spec.LeftNotNil && row.metrics[0] == nil) || (!spec.LeftNotNil && row.metrics[0] != nil) {
+			t.Errorf("[spec %d] left correlation entry mismatch; expected it not to be nil? %t", specIndex, spec.LeftNotNil)
+			continue
+		}
+		if (spec.RightNotNil && row.metrics[1] == nil) || (!spec.RightNotNil && row.metrics[1] != nil) {
+			t.Errorf("[spec %d] right correlation entry mismatch; expected it not to be nil? %t", specIndex, spec.RightNotNil)
+			continue
+		}
 	}
 }
 
@@ -72,7 +95,8 @@ func TestDiffWithProfileLabel(t *testing.T) {
 
 	// Mock args
 	set := flag.NewFlagSet("test", 0)
-	set.String("columns", "min,avg,  max, total,invocations", "")
+	set.String("display-columns", SupportedColumnNames(), "")
+	set.String("display-format", "time", "")
 	set.Float64("threshold", 10.0, "")
 	set.Parse(profileFiles)
 	ctx := cli.NewContext(nil, set, nil)
@@ -86,7 +110,11 @@ func TestDiffWithProfileLabel(t *testing.T) {
 	os.Stdout = pWrite
 
 	// Run diff and capture output
-	DiffProfiles(ctx)
+	err = DiffProfiles(ctx)
+	if err != nil {
+		os.Stdout = stdOut
+		t.Fatal(err)
+	}
 
 	// Drain pipe and restore stdout
 	var buf bytes.Buffer
@@ -96,14 +124,14 @@ func TestDiffWithProfileLabel(t *testing.T) {
 	os.Stdout = stdOut
 
 	output := buf.String()
-	expOutput := `+------------+-------------------------------------------------------------------+-----------------------------------------------------------------------+
-|            | With Label - baseline                                             | With Label                                                            |
-+------------+-------------------------------------------------------------------+-----------------------------------------------------------------------+
-| call stack |     min (ms) |     avg (ms) |     max (ms) |   total (ms) | invoc |      min (ms) |      avg (ms) |      max (ms) |    total (ms) | invoc |
-+------------+--------------+--------------+--------------+--------------+-------+---------------+---------------+---------------+---------------+-------+
-| + main     | 120.00 (---) | 120.00 (---) | 120.00 (---) | 120.00 (---) |     1 | 10.00 (12.0x) | 10.00 (12.0x) | 10.00 (12.0x) | 10.00 (12.0x) |     1 |
-| | - foo    |  10.00 (---) |  60.00 (---) | 110.00 (---) | 120.00 (---) |     2 |     4.00 (--) |  5.00 (12.0x) |  6.00 (18.3x) | 10.00 (12.0x) |     2 |
-+------------+--------------+--------------+--------------+--------------+-------+---------------+---------------+---------------+---------------+-------+
+	expOutput := `+------------+----------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|            | With Label - baseline                                                                                                                        | With Label                                                                                                                                                                       |
++------------+----------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| call stack |  total (ms) |    min (ms) |    max (ms) |   mean (ms) | median (ms) | invoc |    p50 (ms) |    p75 (ms) |    p90 (ms) |    p99 (ms) | stddev |      total (ms) |        min (ms) |        max (ms) |       mean (ms) |     median (ms) | invoc |        p50 (ms) |        p75 (ms) |        p90 (ms) |        p99 (ms) | stddev |
++------------+-------------+-------------+-------------+-------------+-------------+-------+-------------+-------------+-------------+-------------+--------+-----------------+-----------------+-----------------+-----------------+-----------------+-------+-----------------+-----------------+-----------------+-----------------+--------+
+| - main     | 120.00 (--) | 120.00 (--) | 120.00 (--) | 120.00 (--) | 120.00 (--) |     1 | 120.00 (--) | 120.00 (--) | 120.00 (--) | 120.00 (--) |  0.000 | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) |     1 | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) |  0.000 |
+| | + foo    | 120.00 (--) |  10.00 (--) | 110.00 (--) |  60.00 (--) |  60.00 (--) |     2 |  10.00 (--) |  10.00 (--) |  10.00 (--) | 120.00 (--) | 70.711 | 10.00 (< 12.0x) |       4.00 (--) |  6.00 (< 18.3x) |  5.00 (< 12.0x) |  5.00 (< 12.0x) |     2 |       4.00 (--) |       4.00 (--) |       4.00 (--) |  6.00 (< 20.0x) |  1.414 |
++------------+-------------+-------------+-------------+-------------+-------------+-------+-------------+-------------+-------------+-------------+--------+-----------------+-----------------+-----------------+-----------------+-----------------+-------+-----------------+-----------------+-----------------+-----------------+--------+
 `
 
 	if expOutput != output {
@@ -117,7 +145,8 @@ func TestDiffWithoutProfileLabel(t *testing.T) {
 
 	// Mock args
 	set := flag.NewFlagSet("test", 0)
-	set.String("columns", "min,avg,  max, total,invocations", "")
+	set.String("display-columns", SupportedColumnNames(), "")
+	set.String("display-format", "time", "")
 	set.Float64("threshold", 10.0, "")
 	set.Parse(profileFiles)
 	ctx := cli.NewContext(nil, set, nil)
@@ -138,6 +167,7 @@ func TestDiffWithoutProfileLabel(t *testing.T) {
 	// Run diff and capture output
 	err = DiffProfiles(ctx)
 	if err != nil {
+		os.Stdout = stdOut
 		t.Fatal(err)
 	}
 
@@ -149,14 +179,14 @@ func TestDiffWithoutProfileLabel(t *testing.T) {
 	os.Stdout = stdOut
 
 	output := buf.String()
-	expOutput := `+------------+-------------------------------------------------------------------+-----------------------------------------------------------------------+
-|            | baseline                                                          | profile 1                                                             |
-+------------+-------------------------------------------------------------------+-----------------------------------------------------------------------+
-| call stack |     min (ms) |     avg (ms) |     max (ms) |   total (ms) | invoc |      min (ms) |      avg (ms) |      max (ms) |    total (ms) | invoc |
-+------------+--------------+--------------+--------------+--------------+-------+---------------+---------------+---------------+---------------+-------+
-| + main     | 120.00 (---) | 120.00 (---) | 120.00 (---) | 120.00 (---) |     1 | 10.00 (12.0x) | 10.00 (12.0x) | 10.00 (12.0x) | 10.00 (12.0x) |     1 |
-| | - foo    |  10.00 (---) |  60.00 (---) | 110.00 (---) | 120.00 (---) |     2 |     4.00 (--) |  5.00 (12.0x) |  6.00 (18.3x) | 10.00 (12.0x) |     2 |
-+------------+--------------+--------------+--------------+--------------+-------+---------------+---------------+---------------+---------------+-------+
+	expOutput := `+------------+----------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|            | baseline                                                                                                                                     | profile 1                                                                                                                                                                        |
++------------+----------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| call stack |  total (ms) |    min (ms) |    max (ms) |   mean (ms) | median (ms) | invoc |    p50 (ms) |    p75 (ms) |    p90 (ms) |    p99 (ms) | stddev |      total (ms) |        min (ms) |        max (ms) |       mean (ms) |     median (ms) | invoc |        p50 (ms) |        p75 (ms) |        p90 (ms) |        p99 (ms) | stddev |
++------------+-------------+-------------+-------------+-------------+-------------+-------+-------------+-------------+-------------+-------------+--------+-----------------+-----------------+-----------------+-----------------+-----------------+-------+-----------------+-----------------+-----------------+-----------------+--------+
+| - main     | 120.00 (--) | 120.00 (--) | 120.00 (--) | 120.00 (--) | 120.00 (--) |     1 | 120.00 (--) | 120.00 (--) | 120.00 (--) | 120.00 (--) |  0.000 | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) |     1 | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) |  0.000 |
+| | + foo    | 120.00 (--) |  10.00 (--) | 110.00 (--) |  60.00 (--) |  60.00 (--) |     2 |  10.00 (--) |  10.00 (--) |  10.00 (--) | 120.00 (--) | 70.711 | 10.00 (< 12.0x) |       4.00 (--) |  6.00 (< 18.3x) |  5.00 (< 12.0x) |  5.00 (< 12.0x) |     2 |       4.00 (--) |       4.00 (--) |       4.00 (--) |  6.00 (< 20.0x) |  1.414 |
++------------+-------------+-------------+-------------+-------------+-------------+-------+-------------+-------------+-------------+-------------+--------+-----------------+-----------------+-----------------+-----------------+-----------------+-------+-----------------+-----------------+-----------------+-----------------+--------+
 `
 
 	if expOutput != output {
@@ -164,47 +194,124 @@ func TestDiffWithoutProfileLabel(t *testing.T) {
 	}
 }
 
+func TestDiffWithProfileLabelAndPercentOutput(t *testing.T) {
+	profileDir, profileFiles := mockProfiles(t, true)
+	defer os.RemoveAll(profileDir)
+
+	// Mock args
+	set := flag.NewFlagSet("test", 0)
+	set.String("display-columns", SupportedColumnNames(), "")
+	set.String("display-format", "percent", "")
+	set.Float64("threshold", 10.0, "")
+	set.Parse(profileFiles)
+	ctx := cli.NewContext(nil, set, nil)
+
+	// Redirect stdout
+	stdOut := os.Stdout
+	pRead, pWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = pWrite
+
+	// Run diff and capture output
+	err = DiffProfiles(ctx)
+	if err != nil {
+		os.Stdout = stdOut
+		t.Fatal(err)
+	}
+
+	// Drain pipe and restore stdout
+	var buf bytes.Buffer
+	pWrite.Close()
+	io.Copy(&buf, pRead)
+	pRead.Close()
+	os.Stdout = stdOut
+
+	output := buf.String()
+	expOutput := `+------------+----------------------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|            | With Label - baseline                                                                                                                        | With Label                                                                                                                                                              |
++------------+----------------------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| call stack |   total (%) |     min (%) |     max (%) |    mean (%) |  median (%) | invoc |     p50 (%) |     p75 (%) |     p90 (%) |     p99 (%) | stddev |      total (%) |        min (%) |        max (%) |       mean (%) |     median (%) | invoc |        p50 (%) |        p75 (%) |        p90 (%) |        p99 (%) | stddev |
++------------+-------------+-------------+-------------+-------------+-------------+-------+-------------+-------------+-------------+-------------+--------+----------------+----------------+----------------+----------------+----------------+-------+----------------+----------------+----------------+----------------+--------+
+| - main     | 100.0% (--) | 100.0% (--) | 100.0% (--) | 100.0% (--) | 100.0% (--) |     1 | 100.0% (--) | 100.0% (--) | 100.0% (--) | 100.0% (--) |  0.000 | 8.3% (< 12.0x) | 8.3% (< 12.0x) | 8.3% (< 12.0x) | 8.3% (< 12.0x) | 8.3% (< 12.0x) |     1 | 8.3% (< 12.0x) | 8.3% (< 12.0x) | 8.3% (< 12.0x) | 8.3% (< 12.0x) |  0.000 |
+| | + foo    | 100.0% (--) |   8.3% (--) |  91.7% (--) |  50.0% (--) |  50.0% (--) |     2 |   8.3% (--) |   8.3% (--) |   8.3% (--) | 100.0% (--) | 70.711 | 8.3% (< 12.0x) |      3.3% (--) | 5.0% (< 18.3x) | 4.2% (< 12.0x) | 4.2% (< 12.0x) |     2 |      3.3% (--) |      3.3% (--) |      3.3% (--) | 5.0% (< 20.0x) |  1.414 |
++------------+-------------+-------------+-------------+-------------+-------------+-------+-------------+-------------+-------------+-------------+--------+----------------+----------------+----------------+----------------+----------------+-------+----------------+----------------+----------------+----------------+--------+
+`
+
+	if expOutput != output {
+		t.Fatalf("tabularized diff output mismatch; expected:\n%s\n\ngot:\n%s", expOutput, output)
+	}
+}
 func mockProfiles(t *testing.T, useLabel bool) (profileDir string, profileFiles []string) {
 	label := ""
 	if useLabel {
 		label = "With Label"
 	}
-	profiles := []*profiler.Entry{
-		&profiler.Entry{
-			Label:       label,
-			Name:        "main",
-			Depth:       0,
-			TotalTime:   120 * time.Millisecond,
-			MinTime:     120 * time.Millisecond,
-			MaxTime:     120 * time.Millisecond,
-			Invocations: 1,
-			Children: []*profiler.Entry{
-				{
-					Name:        "foo",
-					Depth:       1,
-					TotalTime:   120 * time.Millisecond,
-					MinTime:     10 * time.Millisecond,
-					MaxTime:     110 * time.Millisecond,
-					Invocations: 2,
+	profiles := []*profiler.Profile{
+		&profiler.Profile{
+			Label: label,
+			Target: &profiler.CallMetrics{
+				FnName:      "main",
+				TotalTime:   120 * time.Millisecond,
+				MinTime:     120 * time.Millisecond,
+				MeanTime:    120 * time.Millisecond,
+				MaxTime:     120 * time.Millisecond,
+				MedianTime:  120 * time.Millisecond,
+				P50Time:     120 * time.Millisecond,
+				P75Time:     120 * time.Millisecond,
+				P90Time:     120 * time.Millisecond,
+				P99Time:     120 * time.Millisecond,
+				StdDev:      0.0,
+				Invocations: 1,
+				NestedCalls: []*profiler.CallMetrics{
+					{
+						FnName:      "foo",
+						TotalTime:   120 * time.Millisecond,
+						MeanTime:    60 * time.Millisecond,
+						MedianTime:  60 * time.Millisecond,
+						MinTime:     10 * time.Millisecond,
+						MaxTime:     110 * time.Millisecond,
+						P50Time:     10 * time.Millisecond,
+						P75Time:     10 * time.Millisecond,
+						P90Time:     10 * time.Millisecond,
+						P99Time:     120 * time.Millisecond,
+						StdDev:      70.71068,
+						Invocations: 2,
+					},
 				},
 			},
 		},
-		&profiler.Entry{
-			Label:       label,
-			Name:        "main",
-			Depth:       0,
-			TotalTime:   10 * time.Millisecond,
-			MinTime:     10 * time.Millisecond,
-			MaxTime:     10 * time.Millisecond,
-			Invocations: 1,
-			Children: []*profiler.Entry{
-				{
-					Name:        "foo",
-					Depth:       1,
-					TotalTime:   10 * time.Millisecond,
-					MinTime:     4 * time.Millisecond,
-					MaxTime:     6 * time.Millisecond,
-					Invocations: 2,
+		&profiler.Profile{
+			Label: label,
+			Target: &profiler.CallMetrics{
+				FnName:      "main",
+				TotalTime:   10 * time.Millisecond,
+				MinTime:     10 * time.Millisecond,
+				MeanTime:    10 * time.Millisecond,
+				MaxTime:     10 * time.Millisecond,
+				MedianTime:  10 * time.Millisecond,
+				P50Time:     10 * time.Millisecond,
+				P75Time:     10 * time.Millisecond,
+				P90Time:     10 * time.Millisecond,
+				P99Time:     10 * time.Millisecond,
+				StdDev:      0.0,
+				Invocations: 1,
+				NestedCalls: []*profiler.CallMetrics{
+					{
+						FnName:      "foo",
+						TotalTime:   10 * time.Millisecond,
+						MeanTime:    5 * time.Millisecond,
+						MinTime:     4 * time.Millisecond,
+						MaxTime:     6 * time.Millisecond,
+						MedianTime:  5 * time.Millisecond,
+						P50Time:     4 * time.Millisecond,
+						P75Time:     4 * time.Millisecond,
+						P90Time:     4 * time.Millisecond,
+						P99Time:     6 * time.Millisecond,
+						StdDev:      1.41421,
+						Invocations: 2,
+					},
 				},
 			},
 		},

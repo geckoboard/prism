@@ -7,78 +7,41 @@ import (
 )
 
 func TestProfiler(t *testing.T) {
-	type fnCall struct {
-		Depth    int
-		Name     string
-		WorkTime time.Duration
-		Calls    []fnCall
-	}
+	nestedCallName := "func2"
 
-	callgraph := fnCall{
-		Name:     "func1",
-		WorkTime: 10 * time.Millisecond,
-		Calls: []fnCall{
-			fnCall{
-				Depth:    1,
-				Name:     "func2",
-				WorkTime: 10 * time.Millisecond,
-			},
-			fnCall{
-				Depth:    1,
-				Name:     "func3",
-				WorkTime: 5 * time.Millisecond,
-			},
-			fnCall{
-				Depth:    1,
-				Name:     "func3",
-				WorkTime: 5 * time.Millisecond,
-			},
-		},
-	}
+	sink := newBufferedSink()
+	Init(sink, "profiler-test")
 
-	var simulateCalls func(call fnCall)
-	simulateCalls = func(call fnCall) {
-		if call.Depth == 0 {
-			BeginProfile(call.Name)
-			defer EndProfile()
-		} else {
-			Enter(call.Name)
-			defer Leave()
-		}
+	BeginProfile("func1", time.Now())
+	<-time.After(5 * time.Millisecond)
 
-		// Exec the same enter/leave flow in a separate goroutine. This should not
-		// affect the current profile as it uses a different goid
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
+	// Invoke EndProfile/Enter/Leave from a different go-routine. These
+	// calls should be ignored as there is no active profile running in
+	// the go-routine.
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for depth := 0; depth < 2; depth++ {
+		go func(depth int) {
 			defer wg.Done()
-			if call.Depth == 0 {
+			if depth == 0 {
 				// Calling EndProfile should not interfere with the
 				// profile data collected by the other goroutine
 				defer EndProfile()
 			} else {
-				Enter(call.Name)
+				Enter(nestedCallName, time.Now())
 				defer Leave()
 			}
-		}()
-		wg.Wait()
-
-		// Simulate work
-		<-time.After(call.WorkTime)
-
-		// Follow call graph
-		if call.Calls == nil {
-			return
-		}
-
-		for _, nextCall := range call.Calls {
-			simulateCalls(nextCall)
-		}
+		}(depth)
 	}
 
-	sink := newBufferedSink()
-	Init(sink, "profiler-test")
-	simulateCalls(callgraph)
+	Enter(nestedCallName, time.Now())
+	<-time.After(10 * time.Millisecond)
+	Leave()
+
+	wg.Wait()
+	EndProfile()
+
+	// Shutdown and flush sink
 	Shutdown()
 
 	expEntries := 1
@@ -86,52 +49,43 @@ func TestProfiler(t *testing.T) {
 		t.Fatalf("expected sink to capture %d entries; got %d", expEntries, len(sink.buffer))
 	}
 
-	pe := sink.buffer[0]
+	profile := sink.buffer[0]
 
-	expNestedCalls := 2
-	if len(pe.Children) != expNestedCalls {
-		t.Fatalf("expected nested call count to be %d; got %d", expNestedCalls, len(pe.Children))
+	expID := threadID()
+	if profile.ID != expID {
+		t.Fatalf("expected profile ID to be %d; got %d", expID, profile.ID)
 	}
 
 	expInvocations := 1
-	if pe.Invocations != expInvocations {
-		t.Fatalf("expected func1 invocation count to be %d; got %d", expInvocations, pe.Invocations)
+	if len(profile.Target.NestedCalls) != expInvocations {
+		t.Fatalf("expected profile target func1 to capture %d unique nested calls; got %d", expInvocations, len(profile.Target.NestedCalls))
 	}
 
-	if pe.TotalTime < pe.Children[0].TotalTime+pe.Children[1].TotalTime+callgraph.WorkTime {
-		t.Fatalf("expected func1 total time to be >= the sum of the nested call total time %v + func1 work time %v; got %v", pe.Children[0].TotalTime+pe.Children[1].TotalTime, callgraph.WorkTime, pe.TotalTime)
+	nestedCall := profile.Target.NestedCalls[0]
+	if nestedCall.FnName != nestedCallName {
+		t.Fatalf("expected nested call name to be %q; got %q", nestedCallName, nestedCall.FnName)
 	}
 
-	if pe.TotalTime < pe.Children[0].TotalTime+pe.Children[1].TotalTime+callgraph.WorkTime {
-		t.Fatalf("expected func1 total time to be >= the sum of the nested call total time %v + func1 work time %v; got %v", pe.Children[0].TotalTime+pe.Children[1].TotalTime, callgraph.WorkTime, pe.TotalTime)
-	}
-
-	expInvocations = 2
-	if pe.Children[1].Invocations != expInvocations {
-		t.Fatalf("expected invocation count for func 3 to be %d; got %d", expInvocations, pe.Children[1].Invocations)
-	}
-
-	pe.Free()
-	if pe.Children != nil {
-		t.Fatal("expected entry children to be nil after invoking Free")
+	if nestedCall.Invocations != expInvocations {
+		t.Fatalf("expected nested call %q to be invoked %d times; got %d", nestedCallName, expInvocations, nestedCall.Invocations)
 	}
 }
 
 type bufferedSink struct {
 	sigChan   chan struct{}
-	inputChan chan *Entry
-	buffer    []*Entry
+	inputChan chan *Profile
+	buffer    []*Profile
 }
 
 func newBufferedSink() *bufferedSink {
 	return &bufferedSink{
 		sigChan: make(chan struct{}, 0),
-		buffer:  make([]*Entry, 0),
+		buffer:  make([]*Profile, 0),
 	}
 }
 
 func (s *bufferedSink) Open(_ int) error {
-	s.inputChan = make(chan *Entry, 0)
+	s.inputChan = make(chan *Profile, 0)
 	go s.worker()
 	<-s.sigChan
 	return nil
@@ -147,7 +101,7 @@ func (s *bufferedSink) Close() error {
 }
 
 // Get a channel for piping profile entries to the sink.
-func (s *bufferedSink) Input() chan<- *Entry {
+func (s *bufferedSink) Input() chan<- *Profile {
 	return s.inputChan
 }
 

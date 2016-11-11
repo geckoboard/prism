@@ -75,9 +75,14 @@ func main() {
 			Action:      cmd.PrintProfile,
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name:  "columns",
-					Value: "total,avg,min,max,invocations",
-					Usage: "columns to include in the printout",
+					Name:  "display-columns,dc",
+					Value: "total,min,mean,max,invocations",
+					Usage: fmt.Sprintf("columns to include in the output; supported options: %s", cmd.SupportedColumnNames()),
+				},
+				cli.StringFlag{
+					Name:  "display-format",
+					Value: "time",
+					Usage: "set the format for the output columns containing time values; supported options: time, percent",
 				},
 				cli.Float64Flag{
 					Name:  "threshold",
@@ -98,9 +103,14 @@ func main() {
 			Action:      cmd.DiffProfiles,
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name:  "columns",
-					Value: "total,avg,min,max,invocations",
-					Usage: "columns to include in diff table",
+					Name:  "display-columns,dc",
+					Value: "total,min,mean,max,invocations",
+					Usage: fmt.Sprintf("columns to include in the diff output; supported options: %s", cmd.SupportedColumnNames()),
+				},
+				cli.StringFlag{
+					Name:  "display-format",
+					Value: "time",
+					Usage: "set the format for the output columns containing time values; supported options: time, percent",
 				},
 				cli.Float64Flag{
 					Name:  "threshold",
