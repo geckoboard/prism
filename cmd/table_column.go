@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-var (
-	tableColSplitRegex = regexp.MustCompile(`\s*,\s*`)
-)
-
 // A typed value to indicate which table columns should be included in the output.
 type tableColumnType int
 
@@ -29,29 +25,41 @@ const (
 	numTableColumns
 )
 
+var (
+	tableColSplitRegex = regexp.MustCompile(`\s*,\s*`)
+)
+
 // Header returns the table header description for this column type.
-func (dc tableColumnType) Header() string {
+func (dc tableColumnType) Header(df displayFormat) string {
+	var symbol string
+	switch df {
+	case displayTime:
+		symbol = "ms"
+	case displayPercent:
+		symbol = "%"
+	}
+
 	switch dc {
 	case tableColTotal:
-		return "total (ms)"
+		return "total (" + symbol + ")"
 	case tableColMin:
-		return "min (ms)"
+		return "min (" + symbol + ")"
 	case tableColMax:
-		return "max (ms)"
+		return "max (" + symbol + ")"
 	case tableColMean:
-		return "mean (ms)"
+		return "mean (" + symbol + ")"
 	case tableColMedian:
-		return "median (ms)"
+		return "median (" + symbol + ")"
 	case tableColInvocations:
 		return "invoc"
 	case tableColP50:
-		return "p50 (ms)"
+		return "p50 (" + symbol + ")"
 	case tableColP75:
-		return "p75 (ms)"
+		return "p75 (" + symbol + ")"
 	case tableColP90:
-		return "p90 (ms)"
+		return "p90 (" + symbol + ")"
 	case tableColP99:
-		return "p99 (ms)"
+		return "p99 (" + symbol + ")"
 	case tableColStdDev:
 		return "stddev"
 	}

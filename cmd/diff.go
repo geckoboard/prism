@@ -46,7 +46,12 @@ func DiffProfiles(ctx *cli.Context) error {
 		return errNotEnoughProfiles
 	}
 
-	diffCols, err := parseTableColumList(ctx.String("columns"))
+	df, err := parseDisplayFormat(ctx.String("display-format"))
+	if err != nil {
+		return err
+	}
+
+	diffCols, err := parseTableColumList(ctx.String("display-columns"))
 	if err != nil {
 		return err
 	}
@@ -69,7 +74,7 @@ func DiffProfiles(ctx *cli.Context) error {
 	for profileIndex := 1; profileIndex < len(profiles); profileIndex++ {
 		correlations, _ = correlateMetric(profileIndex, profiles[profileIndex].Target, 0, correlations)
 	}
-	diffTable := tabularizeDiff(profiles, correlations, diffCols, threshold)
+	diffTable := tabularizeDiff(profiles, correlations, diffCols, threshold, df)
 
 	// If stdout is not a terminal we need to strip ANSI characters
 	filter := table.StripAnsi
@@ -130,7 +135,7 @@ func correlateMetric(profileIndex int, metric *profiler.CallMetrics, minDepth in
 
 // Generate a table with that summarizes all profiles and includes a speedup
 // factor for each metric compared to the first (baseline) profile.
-func tabularizeDiff(profiles []*profiler.Profile, correlations []*correlatedMetrics, diffCols []tableColumnType, threshold float64) *table.Table {
+func tabularizeDiff(profiles []*profiler.Profile, correlations []*correlatedMetrics, diffCols []tableColumnType, threshold float64, df displayFormat) *table.Table {
 	t := table.New(len(profiles)*len(diffCols) + 1)
 	t.SetPadding(1)
 
@@ -161,20 +166,21 @@ func tabularizeDiff(profiles []*profiler.Profile, correlations []*correlatedMetr
 		t.AddHeaderGroup(len(diffCols), groupTitle, table.AlignLeft)
 
 		for dIndex, dType := range diffCols {
-			t.SetHeader(baseIndex+dIndex, dType.Header(), table.AlignRight)
+			t.SetHeader(baseIndex+dIndex, dType.Header(df), table.AlignRight)
 		}
 	}
 
 	// Populate rows
+	rootMetrics := profiles[0].Target
 	for _, correlation := range correlations {
-		populateDiffRow(correlation, t, diffCols, threshold)
+		populateDiffRow(rootMetrics, correlation, t, diffCols, threshold, df)
 	}
 
 	return t
 }
 
 // Populate table row with comparisons between correlated metrics.
-func populateDiffRow(correlation *correlatedMetrics, t *table.Table, diffCols []tableColumnType, threshold float64) {
+func populateDiffRow(rootMetrics *profiler.CallMetrics, correlation *correlatedMetrics, t *table.Table, diffCols []tableColumnType, threshold float64, df displayFormat) {
 	numProfiles := len(correlation.metrics)
 	row := make([]string, numProfiles*len(diffCols)+1)
 
@@ -191,7 +197,7 @@ func populateDiffRow(correlation *correlatedMetrics, t *table.Table, diffCols []
 	for profileIndex, metrics := range correlation.metrics {
 		baseIndex := profileIndex*len(diffCols) + 1
 		for dIndex, dType := range diffCols {
-			row[baseIndex+dIndex] = fmtDiff(correlation.metrics[0], metrics, dType, threshold)
+			row[baseIndex+dIndex] = fmtDiff(rootMetrics, correlation.metrics[0], metrics, dType, threshold, df)
 		}
 	}
 	t.Append(row)
@@ -200,9 +206,8 @@ func populateDiffRow(correlation *correlatedMetrics, t *table.Table, diffCols []
 // Colorize and format candidate including a comparison to the baseline value.
 // This method treats lower values as better. If the abs delta difference
 // of the two values is less than the threshold then no comparison will be performed.
-func fmtDiff(baseLine, candidate *profiler.CallMetrics, metricType tableColumnType, threshold float64) string {
-	var baseVal time.Duration
-	var candVal time.Duration
+func fmtDiff(root, baseLine, candidate *profiler.CallMetrics, metricType tableColumnType, threshold float64, df displayFormat) string {
+	var baseVal, candVal, rootVal time.Duration
 
 	if candidate == nil {
 		return ""
@@ -216,39 +221,58 @@ func fmtDiff(baseLine, candidate *profiler.CallMetrics, metricType tableColumnTy
 	case tableColTotal:
 		baseVal = baseLine.TotalTime
 		candVal = candidate.TotalTime
+		rootVal = root.TotalTime
 	case tableColMin:
 		baseVal = baseLine.MinTime
 		candVal = candidate.MinTime
+		rootVal = root.MinTime
 	case tableColMax:
 		baseVal = baseLine.MaxTime
 		candVal = candidate.MaxTime
+		rootVal = root.MaxTime
 	case tableColMean:
 		baseVal = baseLine.MeanTime
 		candVal = candidate.MeanTime
+		rootVal = root.MeanTime
 	case tableColMedian:
 		baseVal = baseLine.MedianTime
 		candVal = candidate.MedianTime
+		rootVal = root.MedianTime
 	case tableColP50:
 		baseVal = baseLine.P50Time
 		candVal = candidate.P50Time
+		rootVal = root.P50Time
 	case tableColP75:
 		baseVal = baseLine.P75Time
 		candVal = candidate.P75Time
+		rootVal = root.P75Time
 	case tableColP90:
 		baseVal = baseLine.P90Time
 		candVal = candidate.P90Time
+		rootVal = root.P90Time
 	case tableColP99:
 		baseVal = baseLine.P99Time
 		candVal = candidate.P99Time
+		rootVal = root.P99Time
 	}
 
 	// Convert value to ms
+	rootMs := float64(rootVal.Nanoseconds()) / 1.0e6
 	baseMs := float64(baseVal.Nanoseconds()) / 1.0e6
 	candMs := float64(candVal.Nanoseconds()) / 1.0e6
 	absDelta := math.Abs(baseMs - candMs)
 
 	if candidate == baseLine || absDelta < threshold {
-		return fmt.Sprintf("%1.2f (--)", candMs)
+		switch df {
+		case displayTime:
+			return fmt.Sprintf("%1.2f (--)", candMs)
+		default:
+			percent := 0.0
+			if rootMs != 0.0 {
+				percent = 100.0 * candMs / rootMs
+			}
+			return fmt.Sprintf("%2.1f%% (--)", percent)
+		}
 	}
 
 	var speedup float64
@@ -272,5 +296,14 @@ func fmtDiff(baseLine, candidate *profiler.CallMetrics, metricType tableColumnTy
 		symbol = '>'
 	}
 
-	return fmt.Sprintf("%1.2f (%s%c %2.1fx\033[0m)", candMs, color, symbol, speedup)
+	switch df {
+	case displayTime:
+		return fmt.Sprintf("%1.2f (%s%c %2.1fx\033[0m)", candMs, color, symbol, speedup)
+	default:
+		percent := 0.0
+		if rootMs != 0.0 {
+			percent = 100.0 * candMs / rootMs
+		}
+		return fmt.Sprintf("%2.1f%% (%s%c %2.1fx\033[0m)", percent, color, symbol, speedup)
+	}
 }

@@ -95,7 +95,8 @@ func TestDiffWithProfileLabel(t *testing.T) {
 
 	// Mock args
 	set := flag.NewFlagSet("test", 0)
-	set.String("columns", SupportedColumnNames(), "")
+	set.String("display-columns", SupportedColumnNames(), "")
+	set.String("display-format", "time", "")
 	set.Float64("threshold", 10.0, "")
 	set.Parse(profileFiles)
 	ctx := cli.NewContext(nil, set, nil)
@@ -144,7 +145,8 @@ func TestDiffWithoutProfileLabel(t *testing.T) {
 
 	// Mock args
 	set := flag.NewFlagSet("test", 0)
-	set.String("columns", SupportedColumnNames(), "")
+	set.String("display-columns", SupportedColumnNames(), "")
+	set.String("display-format", "time", "")
 	set.Float64("threshold", 10.0, "")
 	set.Parse(profileFiles)
 	ctx := cli.NewContext(nil, set, nil)
@@ -192,6 +194,55 @@ func TestDiffWithoutProfileLabel(t *testing.T) {
 	}
 }
 
+func TestDiffWithProfileLabelAndPercentOutput(t *testing.T) {
+	profileDir, profileFiles := mockProfiles(t, true)
+	defer os.RemoveAll(profileDir)
+
+	// Mock args
+	set := flag.NewFlagSet("test", 0)
+	set.String("display-columns", SupportedColumnNames(), "")
+	set.String("display-format", "percent", "")
+	set.Float64("threshold", 10.0, "")
+	set.Parse(profileFiles)
+	ctx := cli.NewContext(nil, set, nil)
+
+	// Redirect stdout
+	stdOut := os.Stdout
+	pRead, pWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = pWrite
+
+	// Run diff and capture output
+	err = DiffProfiles(ctx)
+	if err != nil {
+		os.Stdout = stdOut
+		t.Fatal(err)
+	}
+
+	// Drain pipe and restore stdout
+	var buf bytes.Buffer
+	pWrite.Close()
+	io.Copy(&buf, pRead)
+	pRead.Close()
+	os.Stdout = stdOut
+
+	output := buf.String()
+	expOutput := `+------------+----------------------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|            | With Label - baseline                                                                                                                        | With Label                                                                                                                                                              |
++------------+----------------------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| call stack |   total (%) |     min (%) |     max (%) |    mean (%) |  median (%) | invoc |     p50 (%) |     p75 (%) |     p90 (%) |     p99 (%) | stddev |      total (%) |        min (%) |        max (%) |       mean (%) |     median (%) | invoc |        p50 (%) |        p75 (%) |        p90 (%) |        p99 (%) | stddev |
++------------+-------------+-------------+-------------+-------------+-------------+-------+-------------+-------------+-------------+-------------+--------+----------------+----------------+----------------+----------------+----------------+-------+----------------+----------------+----------------+----------------+--------+
+| - main     | 100.0% (--) | 100.0% (--) | 100.0% (--) | 100.0% (--) | 100.0% (--) |     1 | 100.0% (--) | 100.0% (--) | 100.0% (--) | 100.0% (--) |  0.000 | 8.3% (< 12.0x) | 8.3% (< 12.0x) | 8.3% (< 12.0x) | 8.3% (< 12.0x) | 8.3% (< 12.0x) |     1 | 8.3% (< 12.0x) | 8.3% (< 12.0x) | 8.3% (< 12.0x) | 8.3% (< 12.0x) |  0.000 |
+| | + foo    | 100.0% (--) |   8.3% (--) |  91.7% (--) |  50.0% (--) |  50.0% (--) |     2 |   8.3% (--) |   8.3% (--) |   8.3% (--) | 100.0% (--) | 70.711 | 8.3% (< 12.0x) |      3.3% (--) | 5.0% (< 18.3x) | 4.2% (< 12.0x) | 4.2% (< 12.0x) |     2 |      3.3% (--) |      3.3% (--) |      3.3% (--) | 5.0% (< 20.0x) |  1.414 |
++------------+-------------+-------------+-------------+-------------+-------------+-------+-------------+-------------+-------------+-------------+--------+----------------+----------------+----------------+----------------+----------------+-------+----------------+----------------+----------------+----------------+--------+
+`
+
+	if expOutput != output {
+		t.Fatalf("tabularized diff output mismatch; expected:\n%s\n\ngot:\n%s", expOutput, output)
+	}
+}
 func mockProfiles(t *testing.T, useLabel bool) (profileDir string, profileFiles []string) {
 	label := ""
 	if useLabel {

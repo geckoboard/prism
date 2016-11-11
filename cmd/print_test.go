@@ -29,7 +29,8 @@ func TestPrintWithProfileLabel(t *testing.T) {
 
 	// Mock args
 	set := flag.NewFlagSet("test", 0)
-	set.String("columns", SupportedColumnNames(), "")
+	set.String("display-columns", SupportedColumnNames(), "")
+	set.String("display-format", "time", "")
 	set.Float64("threshold", 10.0, "")
 	set.Parse(profileFiles[0:1])
 	ctx := cli.NewContext(nil, set, nil)
@@ -81,7 +82,8 @@ func TestPrintWithoutProfileLabel(t *testing.T) {
 
 	// Mock args
 	set := flag.NewFlagSet("test", 0)
-	set.String("columns", SupportedColumnNames(), "")
+	set.String("display-columns", SupportedColumnNames(), "")
+	set.String("display-format", "time", "")
 	set.Float64("threshold", 10.0, "")
 	set.Parse(profileFiles[1:])
 	ctx := cli.NewContext(nil, set, nil)
@@ -120,6 +122,59 @@ func TestPrintWithoutProfileLabel(t *testing.T) {
 | + main     |      10.00 |    10.00 |    10.00 |     10.00 |       10.00 |     1 |    10.00 |    10.00 |    10.00 |    10.00 |  0.000 |
 | | - foo    |      10.00 |          |          |           |             |     2 |          |          |          |          |  1.414 |
 +------------+------------+----------+----------+-----------+-------------+-------+----------+----------+----------+----------+--------+
+`
+
+	if expOutput != output {
+		t.Fatalf("tabularized print output mismatch; expected:\n%s\n\ngot:\n%s", expOutput, output)
+	}
+}
+
+func TestPrintWithoutProfileLabelAndPercentOutput(t *testing.T) {
+	profileDir, profileFiles := mockProfiles(t, false)
+	defer os.RemoveAll(profileDir)
+
+	// Mock args
+	set := flag.NewFlagSet("test", 0)
+	set.String("display-columns", SupportedColumnNames(), "")
+	set.String("display-format", "percent", "")
+	set.Float64("threshold", 10.0, "")
+	set.Parse(profileFiles[1:])
+	ctx := cli.NewContext(nil, set, nil)
+
+	// Redirect stdout
+	stdOut := os.Stdout
+	pRead, pWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = pWrite
+
+	// Restore stdout incase of a panic
+	defer func() {
+		os.Stdout = stdOut
+	}()
+
+	// Run diff and capture output
+	err = PrintProfile(ctx)
+	if err != nil {
+		os.Stdout = stdOut
+		t.Fatal(err)
+	}
+
+	// Drain pipe and restore stdout
+	var buf bytes.Buffer
+	pWrite.Close()
+	io.Copy(&buf, pRead)
+	pRead.Close()
+	os.Stdout = stdOut
+
+	output := buf.String()
+	expOutput := `+------------+-----------+---------+---------+----------+------------+-------+---------+---------+---------+---------+--------+
+| call stack | total (%) | min (%) | max (%) | mean (%) | median (%) | invoc | p50 (%) | p75 (%) | p90 (%) | p99 (%) | stddev |
++------------+-----------+---------+---------+----------+------------+-------+---------+---------+---------+---------+--------+
+| + main     |    100.0% |  100.0% |  100.0% |   100.0% |     100.0% |     1 |  100.0% |  100.0% |  100.0% |  100.0% |  0.000 |
+| | - foo    |    100.0% |         |         |          |            |     2 |         |         |         |         |  1.414 |
++------------+-----------+---------+---------+----------+------------+-------+---------+---------+---------+---------+--------+
 `
 
 	if expOutput != output {
