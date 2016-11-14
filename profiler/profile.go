@@ -36,37 +36,26 @@ func (p metricsList) aggregate() *CallMetrics {
 	}
 
 	// Pre-sort metrics so we can calculate the percentiles and the median
-	if cm.Invocations > 1 {
+	if cm.Invocations > 0 {
 		sort.Sort(p)
-	}
 
-	// Calc min/max/total and pXX values
-	callCountF := float64(len(p))
-	p50 := int(math.Ceil(callCountF*.5)) - 1
-	p75 := int(math.Ceil(callCountF*.75)) - 1
-	p90 := int(math.Ceil(callCountF*.90)) - 1
-	p99 := int(math.Ceil(callCountF*.99)) - 1
-	for metricIndex, metric := range p {
-		if metric.TotalTime < cm.MinTime {
-			cm.MinTime = metric.TotalTime
-		}
-		if metric.TotalTime > cm.MaxTime {
-			cm.MaxTime = metric.TotalTime
-		}
-		if metricIndex == p50 {
-			cm.P50Time = metric.TotalTime
-		}
-		if metricIndex == p75 {
-			cm.P75Time = metric.TotalTime
-		}
-		if metricIndex == p90 {
-			cm.P90Time = metric.TotalTime
-		}
-		if metricIndex == p99 {
-			cm.P99Time = metric.TotalTime
-		}
+		// Calc min/max/total and pXX values
+		callCountF := float64(len(p))
+		p50 := int(math.Ceil(callCountF*.5)) - 1
+		p75 := int(math.Ceil(callCountF*.75)) - 1
+		p90 := int(math.Ceil(callCountF*.90)) - 1
+		p99 := int(math.Ceil(callCountF*.99)) - 1
 
-		cm.TotalTime += metric.TotalTime
+		cm.MinTime = p[0].TotalTime
+		cm.MaxTime = p[len(p)-1].TotalTime
+		cm.P50Time = p[p50].TotalTime
+		cm.P75Time = p[p75].TotalTime
+		cm.P90Time = p[p90].TotalTime
+		cm.P99Time = p[p99].TotalTime
+
+		for _, metric := range p {
+			cm.TotalTime += metric.TotalTime
+		}
 	}
 
 	// Calc mean
