@@ -91,6 +91,40 @@ in the original `GOPATH`.
 The collected data can be displayed using the [print](#print) command or 
 compared with previously collected data using the [diff](#diff) command.
 
+### Caveats
+
+#### Profiling inlineable functions
+
+Our profiler relies on the injection of hooks to each tracked function for 
+collecting data. If your code uses inlineable functions, the profiler will 
+**overestimate** the total time spent in the function as injection of the 
+hook invocations will prevent the compiler from inlining those functions.
+
+#### Profiler overhead
+
+The profiler hooks introduce overhead to all profiled targets. This overhead 
+adds up if your code invokes a profiled function a large number of times and 
+is likely to slow down the execution of the program.
+
+The implementation of the profiler goes into [great lengths](https://github.com/geckoboard/prism/pull/9) 
+to ensure that this overhead is tracked and accounted for when calculating the 
+various time-related metrics. Still, our approach to tracking overhead is not 
+100% accurate and may introduce a small error; a few μsec up to a few ms
+depending on the number of invocations of each profiled function. If you need 
+more accuracy we recommend using [pprof](https://golang.org/pkg/net/http/pprof/)
+instead.
+
+To attempt to quantify this error we run a series of benchmarks on an idle 
+machine where we varied the number of invocations and compared the profiler
+timings with the time required to run the same code without the profiler hooks 
+in place. These are the results:
+
+| Fn invocation count | Total skew  | Skew per invocation 
+|---------------------|-------------|--------------------
+| 1000                | 3 μsec      | 3 ns
+| 100000              | 2 msec      | 20 ns 
+| 1000000             | 28 msec     | 28 ns
+
 ## Using prism
 
 ### profile
