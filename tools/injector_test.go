@@ -82,7 +82,7 @@ func TestInjectProfiler(t *testing.T) {
 	}
 
 	expStmts := []string{
-		fmt.Sprintf("prismProfiler.Enter(%q, prismProfiler.Time())", cgNode.Name),
+		fmt.Sprintf("prismProfiler.Enter(%q)", cgNode.Name),
 		"defer prismProfiler.Leave()",
 	}
 	for stmtIndex, expStmt := range expStmts {

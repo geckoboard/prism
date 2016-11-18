@@ -302,9 +302,18 @@ func (t *callGroupTree) linkGroups() {
 func (t *callGroupTree) groupMetrics(cg *callGroup) *CallMetrics {
 	groupCallMetrics := make(metricsList, len(cg.calls))
 	for callIndex, call := range cg.calls {
+		// Our overhead calculation codes uses the mean fn call overhead
+		// estimated by a calibration loop. This may cause the estimated total
+		// time to become negative due to jitter so we need to ensure we track
+		// at least 1ns of total time
+		totalTime := call.exitedAt.Sub(call.enteredAt) - call.profilerOverhead
+		if totalTime <= 0 {
+			totalTime = 1 * time.Nanosecond
+		}
+
 		groupCallMetrics[callIndex] = &CallMetrics{
 			FnName:    call.fnName,
-			TotalTime: call.exitedAt.Sub(call.enteredAt) - call.profilerOverhead,
+			TotalTime: totalTime,
 		}
 	}
 	cm := groupCallMetrics.aggregate()

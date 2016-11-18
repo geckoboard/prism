@@ -12,7 +12,7 @@ func TestProfiler(t *testing.T) {
 	sink := newBufferedSink()
 	Init(sink, "profiler-test")
 
-	BeginProfile("func1", time.Now())
+	BeginProfile("func1")
 	<-time.After(5 * time.Millisecond)
 
 	// Invoke EndProfile/Enter/Leave from a different go-routine. These
@@ -28,13 +28,13 @@ func TestProfiler(t *testing.T) {
 				// profile data collected by the other goroutine
 				defer EndProfile()
 			} else {
-				Enter(nestedCallName, time.Now())
+				Enter(nestedCallName)
 				defer Leave()
 			}
 		}(depth)
 	}
 
-	Enter(nestedCallName, time.Now())
+	Enter(nestedCallName)
 	<-time.After(10 * time.Millisecond)
 	Leave()
 

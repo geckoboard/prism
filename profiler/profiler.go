@@ -8,6 +8,7 @@ import (
 
 const (
 	defaultSinkBufferSize = 100
+	numCalibrationCalls   = 10000000
 )
 
 var (
@@ -23,13 +24,64 @@ var (
 
 	// A sink for emitted profile entries.
 	outputSink Sink
+
+	// Function call invokation overhead; calculated by calibrate() and triggered by init()
+	timeNowOverhead, timeSinceOverhead, deferredFnOverhead, fnCallOverhead time.Duration
 )
 
-// Time is an alias to time.Time(). It is exposed by this package so our injected
-// code does not need to import the time package which may cause conflict with
-// other imported/aliased packages.
-func Time() time.Time {
-	return time.Now()
+func init() {
+	calibrate()
+}
+
+// callibrate attempts to estimate the mean overhead for invoking time.Now(), time.Since(),
+// as well as the mean time spent in function guard code (stack setup, pushing/popping
+// registers, dealing with deferred calls e.t.c).
+//
+// Runtime overhead is generally in the nanosecond range but we need to
+// properly account for it when calculating the total time spent inside a
+// profiled function as it tends to skew our timing calculations when the profiled
+// function is invoked a large number of times.
+//
+// To calculate an estimate, we time N executions of each function and then just
+// calculate the mean execution time. As outliers may skew our results, using
+// the median execution time would be better but calculating it is not a trivial
+// operation due to the space and timing accurace required.
+func calibrate() {
+	// Benchmark function call time. We use a switch statement to ensure that
+	// the compiler will not inline this function (see https://github.com/golang/go/issues/12312)
+	fnCallBench := func(i int) {
+		switch i {
+		}
+	}
+	tick := time.Now()
+	for i := 0; i < numCalibrationCalls; i++ {
+		fnCallBench(i)
+	}
+	fnCallOverhead = time.Since(tick) / time.Duration(numCalibrationCalls)
+
+	// Benchmark deferred function call time
+	deferBench := func(i int) {
+		defer func() { fnCallBench(i) }()
+	}
+	tick = time.Now()
+	for i := 0; i < numCalibrationCalls; i++ {
+		deferBench(i)
+	}
+	deferredFnOverhead = time.Since(tick) / time.Duration(numCalibrationCalls)
+
+	// Benchmark time.Now()
+	tick = time.Now()
+	for i := 0; i < numCalibrationCalls; i++ {
+		time.Now()
+	}
+	timeNowOverhead = fnCallOverhead + time.Since(tick)/time.Duration(numCalibrationCalls)
+
+	// Benchmark time.Since()
+	tick = time.Now()
+	for i := 0; i < numCalibrationCalls; i++ {
+		time.Since(tick)
+	}
+	timeSinceOverhead = fnCallOverhead + time.Since(tick)/time.Duration(numCalibrationCalls)
 }
 
 // Init handles the initialization of the prism profiler. This method must be
@@ -58,19 +110,19 @@ func Shutdown() {
 }
 
 // BeginProfile creates a new profile.
-func BeginProfile(rootFnName string, at time.Time) {
+func BeginProfile(rootFnName string) {
 	tick := time.Now()
 
 	tid := threadID()
 
 	rootCall := makeFnCall(rootFnName)
-	rootCall.enteredAt = at
+	rootCall.enteredAt = tick
 
 	profileMutex.Lock()
 	activeProfiles[tid] = rootCall
 	profileMutex.Unlock()
 
-	rootCall.profilerOverhead += time.Since(tick)
+	rootCall.profilerOverhead += timeNowOverhead + timeSinceOverhead + fnCallOverhead + time.Since(tick)
 }
 
 // EndProfile finalizes and ships a currently active profile.
@@ -89,9 +141,9 @@ func EndProfile() {
 	delete(activeProfiles, tid)
 	profileMutex.Unlock()
 
-	// Generate profile
+	// Generate profile;
 	rootCall.exitedAt = time.Now()
-	rootCall.profilerOverhead += time.Since(tick)
+	rootCall.profilerOverhead += 2*timeNowOverhead + timeSinceOverhead + deferredFnOverhead + time.Since(tick)
 	profile := genProfile(tid, profileLabel, rootCall)
 	rootCall.free()
 
@@ -100,7 +152,7 @@ func EndProfile() {
 }
 
 // Enter adds a new nested function call to the profile linked to the current go-routine ID.
-func Enter(fnName string, at time.Time) {
+func Enter(fnName string) {
 	tick := time.Now()
 	tid := threadID()
 
@@ -113,14 +165,14 @@ func Enter(fnName string, at time.Time) {
 	}
 
 	call := makeFnCall(fnName)
-	call.enteredAt = at
+	call.enteredAt = tick
 	parentCall.nestCall(call)
 
 	activeProfiles[tid] = call
 	profileMutex.Unlock()
 
 	// Update overhead estimate
-	call.profilerOverhead += time.Since(tick)
+	call.profilerOverhead += timeNowOverhead + timeSinceOverhead + fnCallOverhead + time.Since(tick)
 }
 
 // Leave exits the current function in the profile linked to the current go-routine ID.
@@ -145,8 +197,10 @@ func Leave() {
 	activeProfiles[tid] = call.parent
 	profileMutex.Unlock()
 
-	// Update exit timestamp and overhead estimate
+	// Update exit timestamp and overhead estimate for the parent. We also add in
+	// an extra fnCallOverhead to account for the pointer dereferencing code for
+	// updating the parent's overhead
 	call.exitedAt = time.Now()
-	call.profilerOverhead += time.Since(tick)
+	call.profilerOverhead += 2*timeNowOverhead + timeSinceOverhead + deferredFnOverhead + 2*fnCallOverhead + time.Since(tick)
 	call.parent.profilerOverhead += call.profilerOverhead
 }
