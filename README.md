@@ -208,21 +208,21 @@ prism print [command options] profile
 Example:
 prism print $HOME/prism/profile.json
 
-+----------------------------+------------+----------+-----------+----------+-------+
-| Before change - call stack | total (ms) | min (ms) | mean (ms) | max (ms) | invoc |
-+----------------------------+------------+----------+-----------+----------+-------+
-| + main                     |     120.00 |   120.00 |    120.00 |   120.00 |     1 |
-| | - foo                    |     120.00 |    10.00 |     60.00 |   110.00 |     2 |
-+----------------------------+------------+----------+-----------+----------+-------+
++----------------------------+-----------+-----------+-----------+-----------+-------+
+| Before change - call stack |     total |       min |      mean |       max | invoc |
++----------------------------+-----------+-----------+-----------+-----------+-------+
+| + main                     | 120.00 ms | 120.00 ms | 120.00 ms | 120.00 ms |     1 |
+| | - foo                    | 120.00 ms |  10.00 ms |  60.00 ms | 110.00 ms |     2 |
++----------------------------+-----------+-----------+-----------+-----------+-------+
 
 prism print --display-format=percent $HOME/prism/profile.json 
 
-+-------------------------+-----------+---------+----------+---------+-------+
-| With Label - call stack | total (%) | min (%) | mean (%) | max (%) | invoc |
-+-------------------------+-----------+---------+----------+---------+-------+
-| + main                  |    100.0% |  100.0% |   100.0% |  100.0% |     1 |
-| | - foo                 |    100.0% |    8.3% |    50.0% |   91.7% |     2 |
-+-------------------------+-----------+---------+----------+---------+-------+
++-------------------------+--------+--------+--------+--------+-------+
+| With Label - call stack |  total |    min |   mean |    max | invoc |
++-------------------------+--------+--------+--------+--------+-------+
+| + main                  | 100.0% | 100.0% | 100.0% | 100.0% |     1 |
+| | - foo                 | 100.0% |   8.3% |  50.0% |  91.7% |     2 |
++-------------------------+--------+--------+--------+--------+-------+
 ```
 
 #### Supported options
@@ -231,9 +231,10 @@ The following options can be used with the `print` command (see `prism print -h`
 
 | Option                           | Default                  | Description           
 |----------------------------------|--------------------------|-------------------
-| --display-columns value          | total,min,mean,max,invocations | the columns to include in the output; see [supported column types](#supported-column-types) for the list of supported values
-| --display-format value           | time                     | set format for columns containing time values; supported options are: `time` and `percent`
-| --threshold value                | 0                        | mask time-related entries less than `value` (in ms)
+| --display-columns, --dc value    | total,min,mean,max,invocations | the columns to include in the output; see [supported column types](#supported-column-types) for the list of supported values
+| --display-format, --df value     | time                     | set format for columns containing time values; supported options are: `time` and `percent`
+| --display-unit, --du value       | ms                       | set time unit format for columns containing time values; supported options are: `auto`, `ms`, `us`, `ns`
+| --display-threshold value        | 0                        | mask time-related entries less than `value`; uses the same unit as `--display-unit` unless `--display-format` is `percent` where `value` is used to threshold displayed percentages
 | --no-ansi                        |                          | disable color output; prism does this automatically if it detects a non-TTY terminal
 
 #### Supported column names
@@ -276,14 +277,14 @@ prism diff [command options] baseline_profile profile_1 ... profile_n
 Example:
 prism diff $HOME/prism/original.json $HOME/prism/after-change.json
 
-+------------+---------------------------------------------------------------+-------------------------------------------------------------------------------+
-|            | Original - baseline                                           | After changes                                                                 |
-+------------+---------------------------------------------------------------+-------------------------------------------------------------------------------+
-| call stack |  total (ms) |    min (ms) |   mean (ms) |    max (ms) | invoc |      total (ms) |        min (ms) |       mean (ms) |        max (ms) | invoc |
-+------------+-------------+-------------+-------------+-------------+-------+-----------------+-----------------+-----------------+-----------------+-------+
-| - main     | 120.00 (--) | 120.00 (--) | 120.00 (--) | 120.00 (--) |     1 | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) |     1 |
-| | + foo    | 120.00 (--) |  10.00 (--) |  60.00 (--) | 110.00 (--) |     2 | 10.00 (< 12.0x) |   4.00 (< 2.5x) |  5.00 (< 12.0x) |  6.00 (< 18.3x) |     2 |
-+------------+-------------+-------------+-------------+-------------+-------+-----------------+-----------------+-----------------+-----------------+-------+
++------------+--------------------------------------------+-------------------------------------------------------------------------------------+
+|            | Original - baseline                        | After changes                                                                       |
++------------+--------------------------------------------+-------------------------------------------------------------------------------------+
+| call stack |   total |    min |   mean |    max | invoc |              total |                min |            mean |             max | invoc |
++------------+---------+--------+--------+--------+-------+--------------------+--------------------+-----------------+-----------------+-------+
+| - main     | 120.00  | 120.00 | 120.00 | 120.00 |     1 | 10.00 ms (< 12.0x) | 10.00 ms (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) |     1 |
+| | + foo    | 120.00  |  10.00 |  60.00 | 110.00 |     2 | 10.00 ms (< 12.0x) |   4.00 ms (< 2.5x) |  5.00 (< 12.0x) |  6.00 (< 18.3x) |     2 |
++------------+---------+--------+--------+--------+-------+--------------------+--------------------+-----------------+-----------------+-------+
 ```
 
 
@@ -293,9 +294,10 @@ The following options can be used with the `diff` command (see `prism diff -h` f
 
 | Option                           | Default                  | Description           
 |----------------------------------|--------------------------|-------------------
-| --display-columns value          | total,min,mean,max,invocations | the columns to include in the output; see [supported column types](#supported-column-types) for the list of supported values
-| --display-format value           | time                     | set format for columns containing time values; supported options are: `time` and `percent`
-| --threshold value                | 0                        | mask time-related entries with `abs time difference` less than `value` (in ms)
+| --display-columns, --dc value    | total,min,mean,max,invocations | the columns to include in the output; see [supported column types](#supported-column-types) for the list of supported values
+| --display-format, --df value     | time                     | set format for columns containing time values; supported options are: `time` and `percent`
+| --display-unit, --du value       | ms                       | set time unit format for columns containing time values; supported options are: `auto`, `ms`, `us`, `ns`
+| --display-threshold value        | 0                        | mask comparison entries with abs delta time less than `value`; uses the same unit as `--display-unit` unless `--display-format` is `percent` where `value` is used to threshold the abs delta difference percent
 | --no-ansi                        |                          | disable color output; prism does this automatically if it detects a non-TTY terminal
 
 ## License
