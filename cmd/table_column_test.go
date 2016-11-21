@@ -5,18 +5,18 @@ import (
 	"testing"
 )
 
-func TestParseTableColumnListWithTimeSymbol(t *testing.T) {
+func TestParseTableColumnList(t *testing.T) {
 	colNamesToHeaderNames := map[string]string{
-		"total":       "total (ms)",
-		"min":         "min (ms)",
-		"max":         "max (ms)",
-		"mean":        "mean (ms)",
-		"median":      "median (ms)",
+		"total":       "total",
+		"min":         "min",
+		"max":         "max",
+		"mean":        "mean",
+		"median":      "median",
 		"invocations": "invoc",
-		"p50":         "p50 (ms)",
-		"p75":         "p75 (ms)",
-		"p90":         "p90 (ms)",
-		"p99":         "p99 (ms)",
+		"p50":         "p50",
+		"p75":         "p75",
+		"p90":         "p90",
+		"p99":         "p99",
 		"stddev":      "stddev",
 	}
 
@@ -32,44 +32,12 @@ func TestParseTableColumnListWithTimeSymbol(t *testing.T) {
 			continue
 		}
 
-		if colTypes[0].Header(displayTime) != expHeader {
-			t.Errorf("expected header for column %q to be %q; got %q", colName, expHeader, colTypes[0].Header(displayTime))
+		if colTypes[0].Header() != expHeader {
+			t.Errorf("expected header for column %q to be %q; got %q", colName, expHeader, colTypes[0].Header())
 		}
 	}
 }
 
-func TestParseTableColumnListWithPercentSymbol(t *testing.T) {
-	colNamesToHeaderNames := map[string]string{
-		"total":       "total (%)",
-		"min":         "min (%)",
-		"max":         "max (%)",
-		"mean":        "mean (%)",
-		"median":      "median (%)",
-		"invocations": "invoc",
-		"p50":         "p50 (%)",
-		"p75":         "p75 (%)",
-		"p90":         "p90 (%)",
-		"p99":         "p99 (%)",
-		"stddev":      "stddev",
-	}
-
-	for colName, expHeader := range colNamesToHeaderNames {
-		colTypes, err := parseTableColumList(colName)
-		if err != nil {
-			t.Errorf("error parsing col list %q: %v", colName, err)
-			continue
-		}
-
-		if len(colTypes) != 1 {
-			t.Errorf("expected parsed column type list %q to contain 1 entry; got %d", colName, len(colTypes))
-			continue
-		}
-
-		if colTypes[0].Header(displayPercent) != expHeader {
-			t.Errorf("expected header for column %q to be %q; got %q", colName, expHeader, colTypes[0].Header(displayPercent))
-		}
-	}
-}
 func TestParseTableColumnListError(t *testing.T) {
 	_, err := parseTableColumList("total,     unknown")
 	expError := fmt.Sprintf(`unsupported column name "unknown"; supported column names are: %s`, SupportedColumnNames())
@@ -89,5 +57,5 @@ func TestColumnTypePanicForUnknownType(t *testing.T) {
 	if unknownType.Name() != "" {
 		t.Fatal("expected to get an empty string when calling Name() on an unknown table column type")
 	}
-	unknownType.Header(displayTime)
+	unknownType.Header()
 }

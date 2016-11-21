@@ -75,19 +75,24 @@ func main() {
 			Action:      cmd.PrintProfile,
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name:  "display-columns,dc",
+					Name:  "display-columns, dc",
 					Value: "total,min,mean,max,invocations",
 					Usage: fmt.Sprintf("columns to include in the output; supported options: %s", cmd.SupportedColumnNames()),
 				},
 				cli.StringFlag{
-					Name:  "display-format",
+					Name:  "display-format, df",
 					Value: "time",
 					Usage: "set the format for the output columns containing time values; supported options: time, percent",
 				},
+				cli.StringFlag{
+					Name:  "display-unit, du",
+					Value: "ms",
+					Usage: "set the unit for the output columns containing time values; supported options: auto, ms, us, ns",
+				},
 				cli.Float64Flag{
-					Name:  "threshold",
+					Name:  "display-threshold",
 					Value: 0.0,
-					Usage: "only show measurements for entries whose time exceeds the threshold",
+					Usage: "only show measurements for entries whose time exceeds the threshold. Unit is the same as --display-unit unless --display-format is set to percent in which case the threshold is applied to the percent value",
 				},
 				cli.BoolFlag{
 					Name:  "no-ansi",
@@ -113,9 +118,9 @@ func main() {
 					Usage: "set the format for the output columns containing time values; supported options: time, percent",
 				},
 				cli.Float64Flag{
-					Name:  "threshold",
+					Name:  "display-threshold",
 					Value: 0.0,
-					Usage: "only compare entries whose time difference exceeds the threshold",
+					Usage: "only show measurements for entries whose delta time exceeds the threshold. Unit is the same as --display-unit unless --display-format is set to percent in which case the threshold is applied to the percent abs difference value",
 				},
 				cli.BoolFlag{
 					Name:  "no-ansi",
