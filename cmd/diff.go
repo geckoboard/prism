@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -22,6 +23,8 @@ const (
 var (
 	errNotEnoughProfiles      = errors.New(`"diff" requires at least 2 profiles`)
 	errNoDiffColumnsSpecified = errors.New("no table columns specified for diff output")
+
+	ansiEscapeRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 )
 
 // CorrelatedMetrics groups together captured metrics for the same function
@@ -146,6 +149,8 @@ type diffPrinter struct {
 	unit          displayUnit
 	columns       []tableColumnType
 	clipThreshold float64
+
+	rows [][]string
 }
 
 // Generate a table with that summarizes all profiles and includes a speedup
@@ -154,6 +159,7 @@ func (dp *diffPrinter) Tabularize(profiles []*profiler.Profile, correlations []*
 	if dp.unit == displayUnitAuto {
 		dp.unit = dp.detectTimeUnit(correlations)
 	}
+	dp.rows = make([][]string, 0)
 
 	t := table.New(len(profiles)*len(dp.columns) + 1)
 	t.SetPadding(1)
@@ -192,14 +198,59 @@ func (dp *diffPrinter) Tabularize(profiles []*profiler.Profile, correlations []*
 	// Populate rows
 	rootMetrics := profiles[0].Target
 	for _, correlation := range correlations {
-		dp.appendRow(rootMetrics, correlation, t)
+		dp.appendRow(rootMetrics, correlation)
 	}
+	dp.alignAndAppendRows(t)
 
 	return t
 }
 
+// alignAndAppendRows post-processes the generated rows and adds whitespace
+// between the metric value and the comparison parenthesis to align the output.
+func (dp *diffPrinter) alignAndAppendRows(t *table.Table) {
+	if len(dp.rows) == 0 {
+		return
+	}
+
+	// For each column, find the longest parenthesized comparison block
+	maxComparisonLen := make([]int, len(dp.rows[0]))
+	for _, row := range dp.rows {
+		for colIndex, col := range row {
+			// strip ansi chars before making any calculations
+			col = ansiEscapeRegex.ReplaceAllString(col, "")
+			parenIndex := strings.LastIndexByte(col, '(')
+			if parenIndex == -1 {
+				continue
+			}
+
+			colComparisonLen := len(col) - parenIndex - 1
+			if colComparisonLen > maxComparisonLen[colIndex] {
+				maxComparisonLen[colIndex] = colComparisonLen
+			}
+		}
+	}
+
+	// For each column insert enough whitespace before the parenthesized
+	// block so that the numbers are aligned correctly
+	for rowIndex, row := range dp.rows {
+		for colIndex, col := range row {
+			parenIndex := strings.LastIndexByte(col, '(')
+			if parenIndex == -1 {
+				continue
+			}
+
+			padding := maxComparisonLen[colIndex] - (len(ansiEscapeRegex.ReplaceAllString(col, "")) - parenIndex - 1)
+			if padding > 0 {
+				dp.rows[rowIndex][colIndex] = col[:parenIndex] + strings.Repeat(" ", padding) + col[parenIndex:]
+			}
+		}
+	}
+
+	t.Append(dp.rows...)
+}
+
 // Populate table row with comparisons between correlated metrics.
-func (dp *diffPrinter) appendRow(rootMetrics *profiler.CallMetrics, correlation *correlatedMetrics, t *table.Table) {
+func (dp *diffPrinter) appendRow(rootMetrics *profiler.CallMetrics, correlation *correlatedMetrics) {
 	numProfiles := len(correlation.metrics)
 	row := make([]string, numProfiles*len(dp.columns)+1)
 
@@ -219,7 +270,7 @@ func (dp *diffPrinter) appendRow(rootMetrics *profiler.CallMetrics, correlation 
 			row[baseIndex+dIndex] = dp.fmtDiff(rootMetrics, correlation.metrics[0], metrics, dType)
 		}
 	}
-	t.Append(row)
+	dp.rows = append(dp.rows, row)
 }
 
 // detectTimeUnit iterates through the list of correlated metrics and tries to
@@ -329,7 +380,7 @@ func (dp *diffPrinter) fmtDiff(root, baseLine, candidate *profiler.CallMetrics, 
 	if candidate == baseLine {
 		switch dp.format {
 		case displayTime:
-			return fmt.Sprintf("%s", dp.unit.Format(candTime))
+			return dp.unit.Format(candTime)
 		default:
 			percent := 0.0
 			if rootTime != 0.0 {
