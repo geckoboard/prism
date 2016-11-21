@@ -28,27 +28,34 @@ func PrintProfile(ctx *cli.Context) error {
 		return errNoProfile
 	}
 
-	df, err := parseDisplayFormat(ctx.String("display-format"))
+	pp := &profilePrinter{}
+
+	pp.format, err = parseDisplayFormat(ctx.String("display-format"))
 	if err != nil {
 		return err
 	}
 
-	tableCols, err := parseTableColumList(ctx.String("display-columns"))
+	pp.unit, err = parseDisplayUnit(ctx.String("display-unit"))
 	if err != nil {
 		return err
 	}
-	if len(tableCols) == 0 {
+
+	pp.columns, err = parseTableColumList(ctx.String("display-columns"))
+	if err != nil {
+		return err
+	}
+	if len(pp.columns) == 0 {
 		return errNoPrintColumnsSpecified
 	}
 
-	threshold := ctx.Float64("threshold")
+	pp.clipThreshold = ctx.Float64("display-threshold")
 
 	profile, err := loadProfile(args[0])
 	if err != nil {
 		return err
 	}
 
-	profTable := tabularizeProfile(profile, tableCols, threshold, df)
+	profTable := pp.Tabularize(profile)
 
 	// If stdout is not a terminal we need to strip ANSI characters
 	filter := table.StripAnsi
@@ -60,9 +67,21 @@ func PrintProfile(ctx *cli.Context) error {
 	return nil
 }
 
+// profilePrinter generates a tabulated output of the captured profile details.
+type profilePrinter struct {
+	format        displayFormat
+	unit          displayUnit
+	columns       []tableColumnType
+	clipThreshold float64
+}
+
 // Create a table with profile details.
-func tabularizeProfile(profile *profiler.Profile, tableCols []tableColumnType, threshold float64, df displayFormat) *table.Table {
-	t := table.New(len(tableCols) + 1)
+func (pp *profilePrinter) Tabularize(profile *profiler.Profile) *table.Table {
+	if pp.unit == displayUnitAuto {
+		pp.unit = pp.detectTimeUnit(profile.Target)
+	}
+
+	t := table.New(len(pp.columns) + 1)
 	t.SetPadding(1)
 
 	// Setup headers and alignment settings
@@ -71,19 +90,19 @@ func tabularizeProfile(profile *profiler.Profile, tableCols []tableColumnType, t
 	} else {
 		t.SetHeader(0, "call stack", table.AlignLeft)
 	}
-	for dIndex, dType := range tableCols {
-		t.SetHeader(dIndex+1, dType.Header(df), table.AlignRight)
+	for dIndex, dType := range pp.columns {
+		t.SetHeader(dIndex+1, dType.Header(), table.AlignRight)
 	}
 
 	// Populate rows
-	populateMetricRow(0, profile.Target, profile.Target, t, tableCols, threshold, df)
+	pp.appendRow(0, profile.Target, profile.Target, t)
 
 	return t
 }
 
-// Populate table rows with call metrics.
-func populateMetricRow(depth int, rootMetrics, rowMetrics *profiler.CallMetrics, t *table.Table, tableCols []tableColumnType, threshold float64, df displayFormat) {
-	row := make([]string, len(tableCols)+1)
+// Append a row with call metrics and recursively process nested profile entries.
+func (pp *profilePrinter) appendRow(depth int, rootMetrics, rowMetrics *profiler.CallMetrics, t *table.Table) {
+	row := make([]string, len(pp.columns)+1)
 
 	// Fill in call
 	call := strings.Repeat("| ", depth)
@@ -95,21 +114,66 @@ func populateMetricRow(depth int, rootMetrics, rowMetrics *profiler.CallMetrics,
 	row[0] = call + rowMetrics.FnName
 
 	baseIndex := 1
-	for dIndex, dType := range tableCols {
-		row[baseIndex+dIndex] = fmtEntry(rootMetrics, rowMetrics, dType, threshold, df)
+	for dIndex, dType := range pp.columns {
+		row[baseIndex+dIndex] = pp.fmtEntry(rootMetrics, rowMetrics, dType)
 	}
 	t.Append(row)
 
 	// Emit table rows for nested calls
 	for _, childMetrics := range rowMetrics.NestedCalls {
-		populateMetricRow(depth+1, rootMetrics, childMetrics, t, tableCols, threshold, df)
+		pp.appendRow(depth+1, rootMetrics, childMetrics, t)
 	}
 }
 
+// detectTimeUnit iterates through the list of displayable metrics and tries to
+// figure out best displayUnit that can represent all displayable values.
+func (pp *profilePrinter) detectTimeUnit(metrics *profiler.CallMetrics) displayUnit {
+	var val time.Duration
+	var unit displayUnit = displayUnitMs
+	for _, dType := range pp.columns {
+		switch dType {
+		case tableColTotal:
+			val = metrics.TotalTime
+		case tableColMin:
+			val = metrics.MinTime
+		case tableColMax:
+			val = metrics.MaxTime
+		case tableColMean:
+			val = metrics.MeanTime
+		case tableColMedian:
+			val = metrics.MedianTime
+		case tableColP50:
+			val = metrics.P50Time
+		case tableColP75:
+			val = metrics.P75Time
+		case tableColP90:
+			val = metrics.P90Time
+		case tableColP99:
+			val = metrics.P99Time
+		default:
+			continue
+		}
+
+		dUnit := detectTimeUnit(val)
+		if dUnit > unit {
+			unit = dUnit
+		}
+	}
+
+	// Process nested measurements
+	for _, childMetrics := range metrics.NestedCalls {
+		dUnit := pp.detectTimeUnit(childMetrics)
+		if dUnit > unit {
+			unit = dUnit
+		}
+	}
+
+	return unit
+}
+
 // Format metric entry. An empty string will be returned if the entry is of
-// time.Duration type and its value is less than the specified threshold. All
-// time duration entries will be formatted as milliseconds.
-func fmtEntry(rootMetrics, metrics *profiler.CallMetrics, metricType tableColumnType, threshold float64, df displayFormat) string {
+// time.Duration type and its value is less than the specified threshold.
+func (pp *profilePrinter) fmtEntry(rootMetrics, metrics *profiler.CallMetrics, metricType tableColumnType) string {
 	var val, rootVal time.Duration
 
 	switch metricType {
@@ -146,20 +210,23 @@ func fmtEntry(rootMetrics, metrics *profiler.CallMetrics, metricType tableColumn
 		rootVal = rootMetrics.P99Time
 	}
 
-	// Convert value to ms
-	rootMs := float64(rootVal.Nanoseconds()) / 1.0e6
-	ms := float64(val.Nanoseconds()) / 1.0e6
-	if ms < threshold {
-		return ""
-	}
+	// Convert value to the proper unit
+	rootTime := pp.unit.Convert(rootVal)
+	entryTime := pp.unit.Convert(val)
 
-	switch df {
+	switch pp.format {
 	case displayTime:
-		return fmt.Sprintf("%1.2f", ms)
+		if entryTime < pp.clipThreshold {
+			return ""
+		}
+		return pp.unit.Format(entryTime)
 	default:
 		percent := 0.0
-		if rootMs != 0.0 {
-			percent = 100.0 * ms / rootMs
+		if rootTime != 0.0 {
+			percent = 100.0 * entryTime / rootTime
+		}
+		if percent < pp.clipThreshold {
+			return ""
 		}
 		return fmt.Sprintf("%2.1f%%", percent)
 	}

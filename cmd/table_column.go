@@ -43,36 +43,28 @@ var (
 )
 
 // Header returns the table header description for this column type.
-func (dc tableColumnType) Header(df displayFormat) string {
-	var symbol string
-	switch df {
-	case displayTime:
-		symbol = "ms"
-	case displayPercent:
-		symbol = "%"
-	}
-
+func (dc tableColumnType) Header() string {
 	switch dc {
 	case tableColTotal:
-		return "total (" + symbol + ")"
+		return "total"
 	case tableColMin:
-		return "min (" + symbol + ")"
+		return "min"
 	case tableColMax:
-		return "max (" + symbol + ")"
+		return "max"
 	case tableColMean:
-		return "mean (" + symbol + ")"
+		return "mean"
 	case tableColMedian:
-		return "median (" + symbol + ")"
+		return "median"
 	case tableColInvocations:
 		return "invoc"
 	case tableColP50:
-		return "p50 (" + symbol + ")"
+		return "p50"
 	case tableColP75:
-		return "p75 (" + symbol + ")"
+		return "p75"
 	case tableColP90:
-		return "p90 (" + symbol + ")"
+		return "p90"
 	case tableColP99:
-		return "p99 (" + symbol + ")"
+		return "p99"
 	case tableColStdDev:
 		return "stddev"
 	}
