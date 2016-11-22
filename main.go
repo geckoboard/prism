@@ -117,6 +117,11 @@ func main() {
 					Value: "time",
 					Usage: "set the format for the output columns containing time values; supported options: time, percent",
 				},
+				cli.StringFlag{
+					Name:  "display-unit, du",
+					Value: "ms",
+					Usage: "set the unit for the output columns containing time values; supported options: auto, ms, us, ns",
+				},
 				cli.Float64Flag{
 					Name:  "display-threshold",
 					Value: 0.0,
