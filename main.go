@@ -113,11 +113,6 @@ func main() {
 					Usage: fmt.Sprintf("columns to include in the diff output; supported options: %s", cmd.SupportedColumnNames()),
 				},
 				cli.StringFlag{
-					Name:  "display-format",
-					Value: "time",
-					Usage: "set the format for the output columns containing time values; supported options: time, percent",
-				},
-				cli.StringFlag{
 					Name:  "display-unit, du",
 					Value: "ms",
 					Usage: "set the unit for the output columns containing time values; supported options: auto, ms, us, ns",
@@ -125,7 +120,7 @@ func main() {
 				cli.Float64Flag{
 					Name:  "display-threshold",
 					Value: 0.0,
-					Usage: "only show measurements for entries whose delta time exceeds the threshold. Unit is the same as --display-unit unless --display-format is set to percent in which case the threshold is applied to the percent abs difference value",
+					Usage: "only show measurements for entries whose delta time exceeds the threshold. Unit is the same as --display-unit",
 				},
 				cli.BoolFlag{
 					Name:  "no-ansi",
