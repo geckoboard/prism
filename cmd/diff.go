@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/geckoboard/cli-table"
 	"github.com/geckoboard/prism/profiler"
@@ -17,7 +18,17 @@ import (
 )
 
 const (
-	diffEpsilon = 0.01
+	approxEqualEpsilon = 0.1
+
+	lessThanSymbol    = '↓'
+	greaterThanSymbol = '↑'
+	approxEqualSymbol = '≈'
+
+	// ANSI escape codes for coloring output
+	cYellow = "\033[33m"
+	cGreen  = "\033[32m"
+	cRed    = "\033[31m"
+	cReset  = "\033[0m"
 )
 
 var (
@@ -50,11 +61,6 @@ func DiffProfiles(ctx *cli.Context) error {
 	}
 
 	dp := &diffPrinter{}
-
-	dp.format, err = parseDisplayFormat(ctx.String("display-format"))
-	if err != nil {
-		return err
-	}
 
 	dp.unit, err = parseDisplayUnit(ctx.String("display-unit"))
 	if err != nil {
@@ -145,7 +151,6 @@ func correlateMetric(profileIndex int, metric *profiler.CallMetrics, minDepth in
 
 // diffPrinter generates a tabulated output comparing N captured profiles.
 type diffPrinter struct {
-	format        displayFormat
 	unit          displayUnit
 	columns       []tableColumnType
 	clipThreshold float64
@@ -196,9 +201,8 @@ func (dp *diffPrinter) Tabularize(profiles []*profiler.Profile, correlations []*
 	}
 
 	// Populate rows
-	rootMetrics := profiles[0].Target
 	for _, correlation := range correlations {
-		dp.appendRow(rootMetrics, correlation)
+		dp.appendRow(correlation)
 	}
 	dp.alignAndAppendRows(t)
 
@@ -223,7 +227,7 @@ func (dp *diffPrinter) alignAndAppendRows(t *table.Table) {
 				continue
 			}
 
-			colComparisonLen := len(col) - parenIndex - 1
+			colComparisonLen := utf8.RuneCountInString(col) - parenIndex - 1
 			if colComparisonLen > maxComparisonLen[colIndex] {
 				maxComparisonLen[colIndex] = colComparisonLen
 			}
@@ -239,7 +243,7 @@ func (dp *diffPrinter) alignAndAppendRows(t *table.Table) {
 				continue
 			}
 
-			padding := maxComparisonLen[colIndex] - (len(ansiEscapeRegex.ReplaceAllString(col, "")) - parenIndex - 1)
+			padding := maxComparisonLen[colIndex] - (utf8.RuneCountInString(ansiEscapeRegex.ReplaceAllString(col, "")) - parenIndex - 1)
 			if padding > 0 {
 				dp.rows[rowIndex][colIndex] = col[:parenIndex] + strings.Repeat(" ", padding) + col[parenIndex:]
 			}
@@ -250,7 +254,7 @@ func (dp *diffPrinter) alignAndAppendRows(t *table.Table) {
 }
 
 // Populate table row with comparisons between correlated metrics.
-func (dp *diffPrinter) appendRow(rootMetrics *profiler.CallMetrics, correlation *correlatedMetrics) {
+func (dp *diffPrinter) appendRow(correlation *correlatedMetrics) {
 	numProfiles := len(correlation.metrics)
 	row := make([]string, numProfiles*len(dp.columns)+1)
 
@@ -267,7 +271,7 @@ func (dp *diffPrinter) appendRow(rootMetrics *profiler.CallMetrics, correlation 
 	for profileIndex, metrics := range correlation.metrics {
 		baseIndex := profileIndex*len(dp.columns) + 1
 		for dIndex, dType := range dp.columns {
-			row[baseIndex+dIndex] = dp.fmtDiff(rootMetrics, correlation.metrics[0], metrics, dType)
+			row[baseIndex+dIndex] = dp.fmtDiff(correlation.metrics[0], metrics, dType)
 		}
 	}
 	dp.rows = append(dp.rows, row)
@@ -322,8 +326,8 @@ func (dp *diffPrinter) detectTimeUnit(correlations []*correlatedMetrics) display
 // Colorize and format candidate including a comparison to the baseline value.
 // This method treats lower values as better. If the abs delta difference
 // of the two values is less than the threshold then fmtDiff returns an empty string.
-func (dp *diffPrinter) fmtDiff(root, baseLine, candidate *profiler.CallMetrics, metricType tableColumnType) string {
-	var baseVal, candVal, rootVal time.Duration
+func (dp *diffPrinter) fmtDiff(baseLine, candidate *profiler.CallMetrics, metricType tableColumnType) string {
+	var baseVal, candVal time.Duration
 
 	if candidate == nil {
 		return ""
@@ -337,97 +341,72 @@ func (dp *diffPrinter) fmtDiff(root, baseLine, candidate *profiler.CallMetrics, 
 	case tableColTotal:
 		baseVal = baseLine.TotalTime
 		candVal = candidate.TotalTime
-		rootVal = root.TotalTime
 	case tableColMin:
 		baseVal = baseLine.MinTime
 		candVal = candidate.MinTime
-		rootVal = root.MinTime
 	case tableColMax:
 		baseVal = baseLine.MaxTime
 		candVal = candidate.MaxTime
-		rootVal = root.MaxTime
 	case tableColMean:
 		baseVal = baseLine.MeanTime
 		candVal = candidate.MeanTime
-		rootVal = root.MeanTime
 	case tableColMedian:
 		baseVal = baseLine.MedianTime
 		candVal = candidate.MedianTime
-		rootVal = root.MedianTime
 	case tableColP50:
 		baseVal = baseLine.P50Time
 		candVal = candidate.P50Time
-		rootVal = root.P50Time
 	case tableColP75:
 		baseVal = baseLine.P75Time
 		candVal = candidate.P75Time
-		rootVal = root.P75Time
 	case tableColP90:
 		baseVal = baseLine.P90Time
 		candVal = candidate.P90Time
-		rootVal = root.P90Time
 	case tableColP99:
 		baseVal = baseLine.P99Time
 		candVal = candidate.P99Time
-		rootVal = root.P99Time
 	}
 
-	// Convert value to ms
-	rootTime := dp.unit.Convert(rootVal)
+	// Convert value to the appropriate unit
 	baseTime := dp.unit.Convert(baseVal)
 	candTime := dp.unit.Convert(candVal)
 
 	if candidate == baseLine {
-		switch dp.format {
-		case displayTime:
-			return dp.unit.Format(candTime)
-		default:
-			percent := 0.0
-			if rootTime != 0.0 {
-				percent = 100.0 * candTime / rootTime
-			}
-			return fmt.Sprintf("%2.1f%%", percent)
-		}
+		return dp.unit.Format(candTime)
 	}
 
-	absDelta := math.Abs(baseTime - candTime)
-	percent := 0.0
-	if rootTime != 0.0 {
-		percent = 100.0 * candTime / rootTime
+	var diffFactor float64
+	if baseTime == 0 || candTime == 0 {
+		return fmt.Sprintf("%s (--)", dp.unit.Format(candTime))
 	}
 
-	var speedup float64
-	if candTime != 0 {
-		speedup = baseTime / candTime
+	delta := candTime - baseTime
+	if delta < 0 {
+		diffFactor = 100.0 * (baseTime - candTime) / candTime
+	} else if delta > 0 {
+		diffFactor = 100.0 * (candTime - baseTime) / baseTime
 	}
-	if absDelta < diffEpsilon {
-		speedup = 1.0
+
+	if diffFactor < approxEqualEpsilon {
+		diffFactor = 0.0
+	}
+
+	if diffFactor == 0.0 {
+		return fmt.Sprintf("%s (%s%c%s)", dp.unit.Format(candTime), cYellow, approxEqualSymbol, cReset)
 	}
 
 	var symbol rune
 	var color string
-	if speedup == 0.0 || speedup == 1.0 {
-		color = "\033[33m" // yellow
-		symbol = '='
-	} else if speedup >= 1.0 {
-		color = "\033[32m" // green
-		symbol = '<'
+	if delta < 0 {
+		color = cGreen
+		symbol = lessThanSymbol
 	} else {
-		color = "\033[31m" // red
-		symbol = '>'
+		color = cRed
+		symbol = greaterThanSymbol
 	}
 
-	switch dp.format {
-	case displayTime:
-		// Apply clip threshold to the % of change
-		if candTime == 0.0 || math.Abs(absDelta/candTime) < dp.clipThreshold {
-			return fmt.Sprintf("%s (--)", dp.unit.Format(candTime))
-		}
-		return fmt.Sprintf("%s (%s%c %2.1fx\033[0m)", dp.unit.Format(candTime), color, symbol, speedup)
-	default:
-		if absDelta < dp.clipThreshold {
-			return fmt.Sprintf("%2.1f%% (--)", percent)
-		}
-		return fmt.Sprintf("%2.1f%% (%s%c %2.1fx\033[0m)", percent, color, symbol, speedup)
+	if math.Abs(delta) < dp.clipThreshold {
+		return fmt.Sprintf("%s (--)", dp.unit.Format(candTime))
 	}
+	return fmt.Sprintf("%s (%s%c %2.1f%%%s)", dp.unit.Format(candTime), color, symbol, diffFactor, cReset)
 }

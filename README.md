@@ -162,7 +162,7 @@ The following options can be used with the `profile` command (see `prism profile
 
 | Option                           | Default                  | Description           
 |----------------------------------|--------------------------|-------------------
-| --buld-cmd value                 |                          | an optional build command to execute before running the patched project
+| --build-cmd value                |                          | an optional build command to execute before running the patched project
 | --run-cmd value                  | `find . -d 1 -type f -name *\\.go ! -name *_test\\.go -exec go run {} +` | a command for running the patched project; e.g. `make run`
 | --profile-target value, -t value |                          | a FQ target name to be hooked; this option may be specified multiple times
 | --profile-dir value              | $HOME/prism              | the folder where captured profiles will be stored
@@ -206,23 +206,25 @@ Usage:
 prism print [command options] profile
 
 Example:
-prism print $HOME/prism/profile.json
+prism print profile-before.json
 
-+----------------------------+-----------+-----------+-----------+-----------+-------+
-| Before change - call stack |     total |       min |      mean |       max | invoc |
-+----------------------------+-----------+-----------+-----------+-----------+-------+
-| + main                     | 120.00 ms | 120.00 ms | 120.00 ms | 120.00 ms |     1 |
-| | - foo                    | 120.00 ms |  10.00 ms |  60.00 ms | 110.00 ms |     2 |
-+----------------------------+-----------+-----------+-----------+-----------+-------+
++-----------------------------------------------------+-----------+-----------+-----------+-----------+---------+
+| Before change - call stack                          |     total |       min |      mean |       max |   invoc |
++-----------------------------------------------------+-----------+-----------+-----------+-----------+---------+
+| + github.com/geckoboard/test/main                   | 284.00 ms | 284.00 ms | 284.00 ms | 284.00 ms |       1 |
+| | + github.com/geckoboard/test/processor.processRow | 158.30 ms |   1.10 ms |   1.53 ms |   1.98 ms | 1000000 |
+| | | - github.com/geckoboard/test/processor.encrypt  | 150.00 ms |   1.00 ms |   1.40 ms |   1.80 ms | 1000000 |
++-----------------------------------------------------+-----------+-----------+-----------+-----------+---------+
 
-prism print --display-format=percent $HOME/prism/profile.json 
+prism print --display-format=percent profile-before.json 
 
-+-------------------------+--------+--------+--------+--------+-------+
-| With Label - call stack |  total |    min |   mean |    max | invoc |
-+-------------------------+--------+--------+--------+--------+-------+
-| + main                  | 100.0% | 100.0% | 100.0% | 100.0% |     1 |
-| | - foo                 | 100.0% |   8.3% |  50.0% |  91.7% |     2 |
-+-------------------------+--------+--------+--------+--------+-------+
++-----------------------------------------------------+--------+--------+--------+--------+---------+
+| Before change - call stack                          |  total |    min |   mean |    max |   invoc |
++-----------------------------------------------------+--------+--------+--------+--------+---------+
+| + github.com/geckoboard/test/main                   | 100.0% | 100.0% | 100.0% | 100.0% |       1 |
+| | + github.com/geckoboard/test/processor.processRow |  55.7% |   0.4% |   0.5% |   0.7% | 1000000 |
+| | | - github.com/geckoboard/test/processor.encrypt  |  52.8% |   0.4% |   0.5% |   0.6% | 1000000 |
++-----------------------------------------------------+--------+--------+--------+--------+---------+
 ```
 
 #### Supported options
@@ -263,28 +265,26 @@ in tabular form. It expects *two* or more profiles as its input. The first profi
 argument will be treated as the baseline and each other profile argument will be 
 compared against the baseline.
 
-When comparing values, prism will use symbols `>`, `<` or `=` to indicate whether a 
-profile value is `greater`, `less` or `equal` to the baseline profile. A speed
-factor is also included in the output to indicate how  `faster` or `slower` the 
-entry is compared to the baseline: values less than `1x` indicate that the new 
-entry runs slower, equal to `1x` indicate the entry runs the same and values 
-greater than `1x` indicate the new entry runs faster.
+When comparing values, prism will use symbols `↑`, `↓` or `≈` to indicate whether a 
+profile value is `greater`, `less` or `approximately equal` to the baseline profile
+and also format the difference as a percent.
 
 ```
 Usage:
 prism diff [command options] baseline_profile profile_1 ... profile_n
 
 Example:
-prism diff $HOME/prism/original.json $HOME/prism/after-change.json
+prism diff profile-before.json profile-after.json
 
-+------------+--------------------------------------------+-------------------------------------------------------------------------------------+
-|            | Original - baseline                        | After changes                                                                       |
-+------------+--------------------------------------------+-------------------------------------------------------------------------------------+
-| call stack |   total |    min |   mean |    max | invoc |              total |                min |            mean |             max | invoc |
-+------------+---------+--------+--------+--------+-------+--------------------+--------------------+-----------------+-----------------+-------+
-| - main     | 120.00  | 120.00 | 120.00 | 120.00 |     1 | 10.00 ms (< 12.0x) | 10.00 ms (< 12.0x) | 10.00 (< 12.0x) | 10.00 (< 12.0x) |     1 |
-| | + foo    | 120.00  |  10.00 |  60.00 | 110.00 |     2 | 10.00 ms (< 12.0x) |  4.00 ms  (< 2.5x) |  5.00 (< 12.0x) |  6.00 (< 18.3x) |     2 |
-+------------+---------+--------+--------+--------+-------+--------------------+--------------------+-----------------+-----------------+-------+
++-----------------------------------------------------+---------------------------------------------------------+-------------------------------------------------------------------------------------------------+
+|                                                     | Before change - baseline                                | After change                                                                                    |
++-----------------------------------------------------+---------------------------------------------------------+-------------------------------------------------------------------------------------------------+
+| call stack                                          |     total |       min |      mean |       max |   invoc |               total |                 min |                mean |                 max |   invoc |
++-----------------------------------------------------+-----------+-----------+-----------+-----------+---------+---------------------+---------------------+---------------------+---------------------+---------+
+| - github.com/geckoboard/test/main                   | 284.00 ms | 284.00 ms | 284.00 ms | 284.00 ms |       1 | 254.00 ms (↓ 11.8%) | 254.00 ms (↓ 11.8%) | 254.00 ms (↓ 11.8%) | 254.00 ms (↓ 11.8%) |       1 |
+| | - github.com/geckoboard/test/processor.processRow | 158.30 ms |   1.10 ms |   1.53 ms |   1.98 ms | 1000000 | 128.30 ms (↓ 23.4%) |   1.11 ms  (↑ 0.9%) |   1.15 ms (↓ 33.0%) |   1.20 ms (↓ 65.0%) | 1000000 |
+| | | + github.com/geckoboard/test/processor.encrypt  | 150.00 ms |   1.00 ms |   1.40 ms |   1.80 ms | 1000000 | 120.00 ms (↓ 25.0%) |   1.00 ms       (≈) |   1.10 ms (↓ 27.3%) |   1.82 ms  (↑ 1.1%) | 1000000 |
++-----------------------------------------------------+-----------+-----------+-----------+-----------+---------+---------------------+---------------------+---------------------+---------------------+---------+
 ```
 
 
@@ -295,9 +295,8 @@ The following options can be used with the `diff` command (see `prism diff -h` f
 | Option                           | Default                  | Description           
 |----------------------------------|--------------------------|-------------------
 | --display-columns, --dc value    | total,min,mean,max,invocations | the columns to include in the output; see [supported column types](#supported-column-types) for the list of supported values
-| --display-format, --df value     | time                     | set format for columns containing time values; supported options are: `time` and `percent`
 | --display-unit, --du value       | ms                       | set time unit format for columns containing time values; supported options are: `auto`, `ms`, `us`, `ns`
-| --display-threshold value        | 0                        | mask comparison entries with abs delta time less than `value`; uses the same unit as `--display-unit` unless `--display-format` is `percent` where `value` is used to threshold the abs delta difference percent
+| --display-threshold value        | 0                        | mask comparison entries with abs delta time less than `value`; uses the same unit as `--display-unit`
 | --no-ansi                        |                          | disable color output; prism does this automatically if it detects a non-TTY terminal
 
 ## License
