@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/geckoboard/cli-table"
 	"github.com/geckoboard/prism/profiler"
@@ -223,7 +224,7 @@ func (dp *diffPrinter) alignAndAppendRows(t *table.Table) {
 				continue
 			}
 
-			colComparisonLen := len(col) - parenIndex - 1
+			colComparisonLen := utf8.RuneCountInString(col) - parenIndex - 1
 			if colComparisonLen > maxComparisonLen[colIndex] {
 				maxComparisonLen[colIndex] = colComparisonLen
 			}
@@ -239,7 +240,7 @@ func (dp *diffPrinter) alignAndAppendRows(t *table.Table) {
 				continue
 			}
 
-			padding := maxComparisonLen[colIndex] - (len(ansiEscapeRegex.ReplaceAllString(col, "")) - parenIndex - 1)
+			padding := maxComparisonLen[colIndex] - (utf8.RuneCountInString(ansiEscapeRegex.ReplaceAllString(col, "")) - parenIndex - 1)
 			if padding > 0 {
 				dp.rows[rowIndex][colIndex] = col[:parenIndex] + strings.Repeat(" ", padding) + col[parenIndex:]
 			}

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/geckoboard/cli-table"
 	"github.com/geckoboard/prism/profiler"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -244,6 +245,40 @@ func TestDiffWithProfileLabelAndPercentOutput(t *testing.T) {
 
 	if expOutput != output {
 		t.Fatalf("tabularized diff output mismatch; expected:\n%s\n\ngot:\n%s", expOutput, output)
+	}
+}
+
+func TestAlignAndAppendRows(t *testing.T) {
+	dp := &diffPrinter{
+		rows: [][]string{
+			[]string{"Just data", "100 ms (▲ 1020.0x)", "1000000 ms (▲ 123456.0x)", "1 ms (▲ 500.0x)"},
+			[]string{"Just data", "100 ms (^ 12.0x)", "100 ms (--)", "1 ms (▼ 500.0x)"},
+			[]string{"Just data", "100 ms (V 0.9x)", "134 ms (V 126.0x)", "1 ms (--)"},
+		},
+	}
+
+	var buf bytes.Buffer
+	ta := table.New(4)
+	ta.SetPadding(1)
+	ta.SetHeader(0, "A", table.AlignRight)
+	ta.SetHeader(1, "B", table.AlignRight)
+	ta.SetHeader(2, "C", table.AlignRight)
+	ta.SetHeader(3, "D", table.AlignRight)
+	dp.alignAndAppendRows(ta)
+	ta.Write(&buf, table.PreserveAnsi)
+	tableOutput := buf.String()
+
+	expOutput := `+-----------+--------------------+--------------------------+-----------------+
+|         A |                  B |                        C |               D |
++-----------+--------------------+--------------------------+-----------------+
+| Just data | 100 ms (▲ 1020.0x) | 1000000 ms (▲ 123456.0x) | 1 ms (▲ 500.0x) |
+| Just data | 100 ms   (^ 12.0x) |     100 ms          (--) | 1 ms (▼ 500.0x) |
+| Just data | 100 ms    (V 0.9x) |     134 ms    (V 126.0x) | 1 ms       (--) |
++-----------+--------------------+--------------------------+-----------------+
+`
+
+	if tableOutput != expOutput {
+		t.Fatalf("expected output to be:\n%s\ngot:\n%s\n", expOutput, tableOutput)
 	}
 }
 
