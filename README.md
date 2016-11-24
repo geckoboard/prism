@@ -1,4 +1,5 @@
-# prism
+![prism logo](https://drive.google.com/uc?export=download&id=0B0tIAvKWmwa5S3J6eUdvUkVyc1U)
+
 [![CircleCI](https://circleci.com/gh/geckoboard/prism.svg?style=svg)](https://circleci.com/gh/geckoboard/prism)
 [![Coverage Status](https://coveralls.io/repos/github/geckoboard/prism/badge.svg?branch=master)](https://coveralls.io/github/geckoboard/prism?branch=master)
 [![GoDoc](https://godoc.org/github.com/geckoboard/prism?status.svg)](https://godoc.org/github.com/geckoboard/prism)
@@ -298,6 +299,10 @@ The following options can be used with the `diff` command (see `prism diff -h` f
 | --display-unit, --du value       | ms                       | set time unit format for columns containing time values; supported options are: `auto`, `ms`, `us`, `ns`
 | --display-threshold value        | 0                        | mask comparison entries with abs delta time less than `value`; uses the same unit as `--display-unit`
 | --no-ansi                        |                          | disable color output; prism does this automatically if it detects a non-TTY terminal
+
+## Contributing 
+
+Please read our [contributing guide](CONTRIBUTING.md).
 
 ## License
 
