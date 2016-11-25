@@ -115,17 +115,6 @@ depending on the number of invocations of each profiled function. If you need
 more accuracy we recommend using [pprof](https://golang.org/pkg/net/http/pprof/)
 instead.
 
-To attempt to quantify this error we run a series of benchmarks on an idle 
-machine where we varied the number of invocations and compared the profiler
-timings with the time required to run the same code without the profiler hooks 
-in place. These are the results:
-
-| Fn invocation count | Total skew  | Skew per invocation 
-|---------------------|-------------|--------------------
-| 1000                | 3 μsec      | 3 ns
-| 100000              | 2 msec      | 20 ns 
-| 1000000             | 28 msec     | 28 ns
-
 ## Using prism
 
 ### profile
