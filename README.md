@@ -25,17 +25,17 @@ Prism receives as input the path to your project and a list of **fully qualified
 function targets to be profiled. It then creates a temporary go workspace containing 
 a copy of your project and analyzes its sources looking for the specified profile targets. 
 	
-### Target callgraph construction
+### Target call graph construction
 
-For each found target, prism uses [Rapid Type Analysis](https://godoc.org/golang.org/x/tools/go/callgraph/rta) (RTA)
-to discover its callgraph. The callgraph includes all functions potentially reachable 
+For each found target, prism uses [Rapid Type Analysis](https://godoc.org/golang.org/x/tools/go/call graph/rta) (RTA)
+to discover its call graph. The call graph includes all functions potentially reachable 
 either directly or indirectly via the profile target. Whenever RTA encounters an interface 
 it will properly expand the set of reachable functions to include the types that 
 satisfy that particular interface. 
 
 In the following example, running RTA on `DoStuff` will treat the implementation
 of `Work()` for both `aProvider` and `otherProvider` as reachable and include both
-in the generated callgraph.
+in the generated call graph.
 
 ```golang
 type Provider interface {
@@ -57,7 +57,7 @@ func DoStuff(providerType string) {
 }
 ```
 
-The callgraph is then *pruned* to remove any functions that do not belong to the 
+The call graph is then *pruned* to remove any functions that do not belong to the 
 project package or any of its sub-packages. The prune step is required as prism 
 is not able to hook code imported from external packages; prism can only parse 
 and modify code present in the cloned project folder (and optionally in vendored
@@ -65,15 +65,15 @@ packages).
 
 ### Profiler injection
 
-Once the callgraphs for each profile target have been generated, prism will 
+Once the call graphs for each profile target have been generated, prism will 
 parse each source file into an abstract syntax tree (AST) and visit each node 
-looking for function declarations matching the callgraph entries. Each matched 
+looking for function declarations matching the call graph entries. Each matched 
 function is modified to inject the following profiler hooks:
 - BeginProfile/Enter
 - EndProfile/Leave (using a [defer](https://golang.org/doc/effective_go.html#defer) statement)
 
 The Begin/End profile hooks are used for the profile targets whereas the Enter/Leave 
-hooks are used for any function reachable via the profile target's callgraph.
+hooks are used for any function reachable via the profile target's call graph.
 
 In addition, prism will also hook the `main()` function of the project and 
 inject some additional hooks to init/configure the profiler (see [profile](#profile) command below)
@@ -277,7 +277,6 @@ prism diff profile-before.json profile-after.json
 +-----------------------------------------------------+-----------+-----------+-----------+-----------+---------+---------------------+---------------------+---------------------+---------------------+---------+
 ```
 
-
 #### Supported options
 
 The following options can be used with the `diff` command (see `prism diff -h` for more details):
@@ -288,6 +287,75 @@ The following options can be used with the `diff` command (see `prism diff -h` f
 | --display-unit, --du value       | ms                       | set time unit format for columns containing time values; supported options are: `auto`, `ms`, `us`, `ns`
 | --display-threshold value        | 0                        | mask comparison entries with abs delta time less than `value`; uses the same unit as `--display-unit`
 | --no-ansi                        |                          | disable color output; prism does this automatically if it detects a non-TTY terminal
+
+## Running prism for a range of Git commits
+
+One particular use of prism is to collect and diff profiling data for a sequence
+of Git commits. To this end, we have come up with a simple shell script to automate
+that. 
+
+The script checks out all commits between the two hashes and runs prism profile for 
+each commit using its SHA as the profile label, storing the captured profiles 
+in a temporary directory. Once all profiles have been collected it will runs 
+a prism diff command to print a table comparing each profile against the one 
+obtained for the first commit.
+
+```bash
+#!/bin/bash
+
+set -euo pipefail
+
+if [ "$#" -lt 3 ]; then
+    echo "Generate prism profiles for a sequence of commit SHAs and output their diff"
+    echo
+    echo "Usage: "
+    echo "git-prism.sh start_commit end_commit target..."
+    echo
+    exit 1
+fi
+
+if [[ ! -z $(git status -s) ]]; then
+    echo "git-prism: target repo is dirty; please commit or stash your changes and try again"
+    exit 1
+fi
+
+CUR_BRANCH=`git rev-parse --abbrev-ref HEAD`
+START_COMMIT=$1
+END_COMMIT=$2
+shift 2
+
+TARGETS=""
+for target in "$@"
+do
+    TARGETS=${TARGETS}" -t $target"
+done
+
+# Setup tmp dir for profiles
+TMPDIR=`mktemp -d`
+trap 'git checkout "$CUR_BRANCH" ; rm -rf "$TMPDIR" ; exit 255;' EXIT
+
+# Generate profile for each SHA
+for sha in `git rev-list --reverse --abbrev-commit $START_COMMIT $END_COMMIT`; do
+    git checkout -q $sha && prism profile --profile-dir="$TMPDIR" --profile-label="$sha" $TARGETS ./
+done
+
+# Output diff
+prism diff $TMPDIR/*.json
+```
+
+You can run this script directly or define a Git alias such as:
+
+`git config --global alias.prismdiff '!bash /usr/local/bin/prism-diff.sh'`
+
+which allows you to get a diff for all commits between two SHAs by running: 
+
+`git prismdiff start_SHA end_SHA target_1 ... targetN`
+
+## Related articles
+
+A brief introduction on prism and a simple example of its use can be found in 
+the [introducing prism blog post](https://medium.com/geckoboard-under-the-hood/introducing-prism-9c08e9926755).
+
 
 ## Contributing 
 
