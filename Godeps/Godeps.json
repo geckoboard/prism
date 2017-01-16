@@ -1,0 +1,24 @@
+{
+	"ImportPath": "github.com/geckoboard/prism",
+	"GoVersion": "go1.7",
+	"GodepVersion": "v74",
+	"Deps": [
+		{
+			"ImportPath": "github.com/dustin/go-humanize",
+			"Rev": "7a41df006ff9af79a29f0ffa9c5f21fbe6314a2d"
+		},
+		{
+			"ImportPath": "github.com/geckoboard/cli-table",
+			"Rev": "ba78d7928542412052e800bbe238b66085289778"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/ssh/terminal",
+			"Rev": "346896d57731cb5670b36c6178fc5519f3225980"
+		},
+		{
+			"ImportPath": "gopkg.in/urfave/cli.v1",
+			"Comment": "v1.18.1",
+			"Rev": "a14d7d367bc02b1f57d88de97926727f2d936387"
+		}
+	]
+}
