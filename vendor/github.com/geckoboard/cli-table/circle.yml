@@ -1,0 +1,11 @@
+machine:
+  environment:
+    PATH: ~/.local/bin:$PATH
+test:
+  pre:
+    - go get github.com/mattn/goveralls
+    - cd $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME && go vet ./...
+  override:
+    - go test -v -cover -race -coverprofile=/home/ubuntu/coverage.out
+  post:
+    - /home/ubuntu/.go_workspace/bin/goveralls -coverprofile=/home/ubuntu/coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN

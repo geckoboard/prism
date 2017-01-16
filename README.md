@@ -15,7 +15,7 @@ but rather as an alternative for cases when you:
 
 Prism requires go 1.5+. To install it run:
 
-`go get github.com/geckoboard/prism/... && go install github.com/geckoboard/prism`.
+`go get github.com/geckoboard/prism && go install github.com/geckoboard/prism`.
 
 You can then run `prism -h` for details on the command line arguments.
 
